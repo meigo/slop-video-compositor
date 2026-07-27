@@ -630,13 +630,11 @@
   /**
    * Contain-fit project canvas into the viewport (zoom=1 size).
    * Preserves exact project aspect ratio (no nonuniform stretch).
-   * Leaves a small margin so the output frame is clearly inset from the panel edge.
    */
   function updateViewFit() {
     if (!viewportEl) return;
-    const pad = 16; // inset so the frame border is always visible
-    const vw = Math.max(1, viewportEl.clientWidth - pad * 2);
-    const vh = Math.max(1, viewportEl.clientHeight - pad * 2);
+    const vw = Math.max(1, viewportEl.clientWidth);
+    const vh = Math.max(1, viewportEl.clientHeight);
     const s = Math.min(vw / canvasW, vh / canvasH);
     // Floor the longer side, then derive the other from aspect for pixel-stable ratios
     const aspect = canvasW / canvasH;
