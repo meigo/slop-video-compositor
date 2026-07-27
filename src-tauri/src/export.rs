@@ -1,8 +1,13 @@
-//! Export segment types and pure ffmpeg argv / concat-list builders.
-//! Full encode pipeline is Task 10.
+//! Export segment types, pure ffmpeg argv / concat-list builders, and encode pipeline.
 
+use crate::deps::which;
 use crate::geometry::draw_rect;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
 
 /// One flattened segment from the frontend (serde).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -30,6 +35,199 @@ pub struct ExportOpts {
     pub canvas_height: u32,
     pub segments: Vec<ExportSegment>,
     pub output_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportResult {
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportProgress {
+    pub phase: String,
+    pub message: String,
+    pub pct: Option<f64>,
+}
+
+/// RAII cleanup for the export temp directory.
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn stderr_tail(s: &str, max: usize) -> String {
+    let t = s.trim();
+    if t.chars().count() <= max {
+        return t.to_string();
+    }
+    let start = t
+        .char_indices()
+        .rev()
+        .nth(max.saturating_sub(1))
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    t[start..].to_string()
+}
+
+fn run_ffmpeg(ffmpeg: &str, args: &[String]) -> Result<(), String> {
+    let output = Command::new(ffmpeg)
+        .args(args)
+        .output()
+        .map_err(|e| format!("failed to spawn ffmpeg: {e}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let tail = stderr_tail(&stderr, 500);
+    if tail.is_empty() {
+        Err(format!(
+            "ffmpeg failed with status {}",
+            output.status.code().unwrap_or(-1)
+        ))
+    } else {
+        Err(format!("ffmpeg failed: {tail}"))
+    }
+}
+
+fn emit_progress(app: &AppHandle, phase: &str, message: impl Into<String>, pct: Option<f64>) {
+    let _ = app.emit(
+        "export-progress",
+        ExportProgress {
+            phase: phase.into(),
+            message: message.into(),
+            pct,
+        },
+    );
+}
+
+fn make_temp_dir() -> Result<TempDir, String> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!("slop-vc-{nanos}"));
+    fs::create_dir_all(&dir).map_err(|e| format!("create temp dir: {e}"))?;
+    Ok(TempDir(dir))
+}
+
+/// Encode segments with ffmpeg and concat to `opts.output_path`.
+#[tauri::command]
+pub async fn export_project(app: AppHandle, opts: ExportOpts) -> Result<ExportResult, String> {
+    if opts.segments.is_empty() {
+        return Err("nothing to export".into());
+    }
+
+    let ffmpeg = which("ffmpeg").ok_or_else(|| "ffmpeg not found on PATH".to_string())?;
+
+    let output_path = PathBuf::from(&opts.output_path);
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("create output directory {}: {e}", parent.display()))?;
+        }
+    }
+
+    let temp = make_temp_dir()?;
+    let n = opts.segments.len();
+    let mut segment_paths: Vec<String> = Vec::with_capacity(n);
+
+    for (i, seg) in opts.segments.iter().enumerate() {
+        let seg_name = format!("seg{i:04}.mp4");
+        let seg_path = temp.path().join(&seg_name);
+        let seg_path_str = seg_path.to_string_lossy().into_owned();
+
+        let pct = Some((i as f64) / (n as f64 + 1.0));
+        emit_progress(
+            &app,
+            "segment",
+            format!("Encoding segment {}/{}", i + 1, n),
+            pct,
+        );
+
+        let args = match seg {
+            ExportSegment::Clip { .. } => {
+                clip_segment_args(seg, opts.canvas_width, opts.canvas_height, &seg_path_str)
+            }
+            ExportSegment::Black { duration } => black_segment_args(
+                *duration,
+                opts.canvas_width,
+                opts.canvas_height,
+                &seg_path_str,
+            ),
+        };
+
+        run_ffmpeg(&ffmpeg, &args)?;
+        segment_paths.push(seg_path_str);
+    }
+
+    emit_progress(
+        &app,
+        "concat",
+        "Concatenating segments",
+        Some(n as f64 / (n as f64 + 1.0)),
+    );
+
+    let list_path = temp.path().join("concat.txt");
+    let list_body = concat_list_body(&segment_paths);
+    fs::write(&list_path, list_body).map_err(|e| format!("write concat list: {e}"))?;
+
+    let list_str = list_path.to_string_lossy().into_owned();
+    let out_str = opts.output_path.clone();
+
+    let copy_args = vec![
+        "-y".into(),
+        "-f".into(),
+        "concat".into(),
+        "-safe".into(),
+        "0".into(),
+        "-i".into(),
+        list_str.clone(),
+        "-c".into(),
+        "copy".into(),
+        out_str.clone(),
+    ];
+
+    if run_ffmpeg(&ffmpeg, &copy_args).is_err() {
+        let reencode_args = vec![
+            "-y".into(),
+            "-f".into(),
+            "concat".into(),
+            "-safe".into(),
+            "0".into(),
+            "-i".into(),
+            list_str,
+            "-c:v".into(),
+            "libx264".into(),
+            "-pix_fmt".into(),
+            "yuv420p".into(),
+            "-c:a".into(),
+            "aac".into(),
+            "-movflags".into(),
+            "+faststart".into(),
+            out_str,
+        ];
+        run_ffmpeg(&ffmpeg, &reencode_args)?;
+    }
+
+    // Drop temp before success path (explicit; Drop also cleans up on Err early return).
+    drop(temp);
+
+    emit_progress(&app, "done", "Export complete", Some(1.0));
+
+    Ok(ExportResult {
+        output_path: opts.output_path,
+    })
 }
 
 /// Integer pixel geometry for ffmpeg scale/overlay (rounded from float draw rect).

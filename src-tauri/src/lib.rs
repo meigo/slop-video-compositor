@@ -5,6 +5,7 @@ mod probe;
 mod settings;
 
 use deps::check_deps;
+use export::export_project;
 use probe::probe_media;
 use settings::{default_export_dir, load_settings, reveal_in_folder, save_settings};
 
@@ -20,6 +21,7 @@ pub fn run() {
             default_export_dir,
             reveal_in_folder,
             probe_media,
+            export_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
