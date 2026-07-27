@@ -1,0 +1,123 @@
+:root {
+  --bg: #141416;
+  --surface: #1c1c20;
+  --surface-2: #24242a;
+  --border: #2e2e34;
+  --text: #f0f0f2;
+  --muted: #9a9aa3;
+  --accent: #5b8cff;
+  --accent-hover: #7aa3ff;
+  --danger: #f07178;
+  --warn: #d4a017;
+  --ok: #7dcea0;
+  --disabled: #3a3a42;
+
+  color-scheme: dark;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: var(--text);
+  background-color: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  border-radius: 6px;
+  border: 1px solid transparent;
+  padding: 0.4em 0.75em;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+button:disabled {
+  background: var(--disabled);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+button.ghost {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+button.ghost:hover:not(:disabled) {
+  background: #2c2c34;
+  border-color: #3a3a44;
+}
+
+button.danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+button.danger:hover:not(:disabled) {
+  background: rgba(240, 113, 120, 0.15);
+}
+
+input[type="text"],
+input[type="number"],
+input:not([type]) {
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  padding: 0.35em 0.55em;
+  background: var(--bg);
+  min-width: 0;
+}
+
+input:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* number inputs: hide spinners in tight toolbars */
+input[type="number"].compact::-webkit-outer-spin-button,
+input[type="number"].compact::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"].compact {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

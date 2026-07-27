@@ -97,6 +97,13 @@ export async function saveProjectFileAs(
   return path;
 }
 
+const VIDEO_FILTERS = [
+  {
+    name: "Video",
+    extensions: ["mp4", "mov", "mkv", "webm", "m4v", "avi"],
+  },
+];
+
 /** Multi-select video files for import. Returns [] if cancelled. */
 export async function pickVideoFiles(
   defaultPath?: string | null,
@@ -104,17 +111,27 @@ export async function pickVideoFiles(
   const selected = await open({
     multiple: true,
     directory: false,
-    filters: [
-      {
-        name: "Video",
-        extensions: ["mp4", "mov", "mkv", "webm", "m4v", "avi"],
-      },
-    ],
+    filters: VIDEO_FILTERS,
     defaultPath: defaultPath ?? undefined,
     title: "Import videos",
   });
   if (selected === null) return [];
   return Array.isArray(selected) ? selected : [selected];
+}
+
+/** Single video file for relink. Returns null if cancelled. */
+export async function pickVideoFile(
+  defaultPath?: string | null,
+): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    filters: VIDEO_FILTERS,
+    defaultPath: defaultPath ?? undefined,
+    title: "Relink media",
+  });
+  if (selected === null || Array.isArray(selected)) return null;
+  return selected;
 }
 
 /** Save dialog for export MP4 path. Returns null if cancelled. */
