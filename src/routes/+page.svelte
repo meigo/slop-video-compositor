@@ -211,10 +211,7 @@
     type="button"
     class="splitter"
     class:active={resizingTimeline}
-    aria-label="Resize timeline"
-    aria-valuenow={app.timelineHeightPx}
-    aria-valuemin={120}
-    aria-valuemax={Math.floor((typeof window !== "undefined" ? window.innerHeight : 800) * 0.6)}
+    aria-label="Resize timeline height ({app.timelineHeightPx} pixels)"
     title="Drag to resize timeline"
     onpointerdown={onSplitterPointerDown}
     onkeydown={(e) => {
