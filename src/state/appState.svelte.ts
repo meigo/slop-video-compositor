@@ -310,10 +310,10 @@ export async function exportVideo() {
     }
   }
 
+  // Always re-probe every unique path so deleted/moved files fail here, not in ffmpeg.
   const missing: string[] = [];
   const nextMeta = new Map(app.metaByPath);
   for (const path of paths) {
-    if (nextMeta.has(path)) continue;
     try {
       const media = await probeMedia(path);
       nextMeta.set(path, toSourceMeta(path, media));
