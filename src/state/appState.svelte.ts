@@ -59,6 +59,8 @@ export const app = $state({
   status: "Ready",
   exporting: false,
   playing: false,
+  /** When true, preview playback is silent. Default false so clip audio is audible. */
+  previewMuted: false,
   checkingDeps: true,
   lastProjectDir: null as string | null,
   lastExportDir: null as string | null,

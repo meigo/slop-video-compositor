@@ -109,14 +109,25 @@
     });
   }
 
+  /** Hear clip audio while playing (unless user muted); stay silent while paused/scrubbing. */
+  function applyAudioState() {
+    if (!videoEl) return;
+    videoEl.muted = app.previewMuted || !app.playing;
+    if (videoEl.volume !== 1) videoEl.volume = 1;
+  }
+
   async function ensureVideo(path: string, gen: number): Promise<boolean> {
     if (!videoEl) return false;
-    if (loadedPath === path && videoEl.src) return gen === syncGen;
+    if (loadedPath === path && videoEl.src) {
+      applyAudioState();
+      return gen === syncGen;
+    }
 
     loadedPath = path;
     videoEl.pause();
     videoEl.src = assetUrl(path);
     videoEl.load();
+    applyAudioState();
 
     await new Promise<void>((resolve) => {
       const el = videoEl;
@@ -184,6 +195,7 @@
     if (gen !== syncGen) return;
 
     videoEl.pause();
+    applyAudioState();
     paint();
   }
 
@@ -196,12 +208,14 @@
 
     if (!hit) {
       videoEl.pause();
+      applyAudioState();
       paint();
       return;
     }
 
     const path = hit.clip.sourcePath;
     const st = sourceTime(hit.clip, app.playhead);
+    applyAudioState();
 
     if (loadedPath !== path) {
       const gen = ++syncGen;
@@ -210,6 +224,7 @@
         if (!ok || !app.playing || gen !== syncGen) return;
         await seekVideo(st, gen, true);
         if (!app.playing || !videoEl || gen !== syncGen) return;
+        applyAudioState();
         void videoEl.play().catch(() => {});
         paint();
       })();
@@ -221,10 +236,12 @@
       const gen = syncGen;
       void seekVideo(st, gen, true).then(() => {
         if (app.playing && videoEl?.paused) {
+          applyAudioState();
           void videoEl.play().catch(() => {});
         }
       });
     } else if (videoEl.paused) {
+      applyAudioState();
       void videoEl.play().catch(() => {});
     }
 
@@ -286,12 +303,14 @@
   // Playback loop only
   $effect(() => {
     if (app.playing) {
+      applyAudioState();
       startRaf();
       syncPlaying();
       return () => stopRaf();
     }
     stopRaf();
     videoEl?.pause();
+    applyAudioState();
   });
 
   // Still-frame when paused: seek on playhead / project / meta changes
@@ -301,6 +320,12 @@
     void project();
     void app.metaByPath;
     void syncPaused();
+  });
+
+  // Mute toggle while playing
+  $effect(() => {
+    void app.previewMuted;
+    applyAudioState();
   });
 
   // Keep canvas buffer size in sync with project canvas
@@ -456,9 +481,9 @@
     onpointerdown={onPointerDown}
     onwheel={onWheel}
   ></canvas>
-  <!-- Hidden decoder for local media frames -->
+  <!-- Decoder for local media frames + preview audio (unmuted only while playing) -->
   <!-- svelte-ignore a11y_media_has_caption -->
-  <video bind:this={videoEl} class="decoder" muted playsinline preload="auto"></video>
+  <video bind:this={videoEl} class="decoder" playsinline preload="auto"></video>
 </div>
 
 <style>

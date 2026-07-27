@@ -145,8 +145,13 @@
         playhead={app.playhead}
         duration={dur}
         playing={app.playing}
+        muted={app.previewMuted}
         onTogglePlay={togglePlay}
         onStop={stop}
+        onToggleMute={() => {
+          app.previewMuted = !app.previewMuted;
+          app.status = app.previewMuted ? "Preview muted" : "Preview unmuted";
+        }}
       />
     </section>
 

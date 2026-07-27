@@ -2,17 +2,29 @@
   import Pause from "@lucide/svelte/icons/pause";
   import Play from "@lucide/svelte/icons/play";
   import Square from "@lucide/svelte/icons/square";
+  import Volume2 from "@lucide/svelte/icons/volume-2";
+  import VolumeX from "@lucide/svelte/icons/volume-x";
   import { formatTimestamp } from "$lib/time";
 
   interface Props {
     playhead: number;
     duration: number;
     playing: boolean;
+    muted: boolean;
     onTogglePlay: () => void;
     onStop: () => void;
+    onToggleMute: () => void;
   }
 
-  let { playhead, duration, playing, onTogglePlay, onStop }: Props = $props();
+  let {
+    playhead,
+    duration,
+    playing,
+    muted,
+    onTogglePlay,
+    onStop,
+    onToggleMute,
+  }: Props = $props();
 
   const ICON = 16;
 </script>
@@ -33,6 +45,20 @@
   </button>
   <button type="button" class="ghost" onclick={onStop} title="Stop" aria-label="Stop">
     <Square size={15} strokeWidth={2.25} aria-hidden="true" />
+  </button>
+  <button
+    type="button"
+    class="ghost"
+    onclick={onToggleMute}
+    title={muted ? "Unmute preview" : "Mute preview"}
+    aria-label={muted ? "Unmute" : "Mute"}
+    aria-pressed={muted}
+  >
+    {#if muted}
+      <VolumeX size={ICON} strokeWidth={2} aria-hidden="true" />
+    {:else}
+      <Volume2 size={ICON} strokeWidth={2} aria-hidden="true" />
+    {/if}
   </button>
   <span class="time" aria-label="Playhead time">
     {formatTimestamp(playhead)}
