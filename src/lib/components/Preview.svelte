@@ -87,7 +87,8 @@
   const p = $derived(project());
   const canvasW = $derived(Math.max(1, Math.round(p.canvas.width)));
   const canvasH = $derived(Math.max(1, Math.round(p.canvas.height)));
-  const canTransform = $derived(!!selectedClip());
+  /** Canvas is always interactive (viewport pan; modifiers for source ops). */
+  const canTransform = true;
   /**
    * Base layout centers the stage in the viewport (left/top 50% + negative half margins).
    * Camera then only applies pan + zoom about the stage center.
@@ -725,57 +726,61 @@
   }
 
   function onPointerDown(e: PointerEvent) {
-    // Middle mouse, or Alt/Option+left: pan the viewport
-    if (e.button === 1 || (e.button === 0 && e.altKey && !e.shiftKey)) {
+    if (e.button !== 0 && e.button !== 1) return;
+
+    // Clip ops: Shift = scale, Ctrl/Cmd = move source on canvas
+    const scaleMode = e.button === 0 && e.shiftKey && !e.altKey;
+    const moveMode = e.button === 0 && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;
+
+    if (scaleMode || moveMode) {
+      const clip = transformTargetClip();
+      if (!clip) {
+        // No clip under playhead / selection — fall through to viewport pan
+        if (e.button === 0) startViewPan(e);
+        return;
+      }
+
+      e.preventDefault();
+      if (panningView) {
+        detachViewPanListeners();
+        panningView = false;
+      }
+      if (dragClipId) {
+        detachDragListeners();
+        clearDrag();
+      }
+
+      if (app.selectedClipId !== clip.id) {
+        app.selectedClipId = clip.id;
+      }
+
+      dragClipId = clip.id;
+      dragMode = scaleMode ? "scale" : "pan";
+      dragBefore = cloneProject(project());
+      dragStartX = clip.transform.x;
+      dragStartY = clip.transform.y;
+      dragStartScale = clip.transform.scale;
+      dragOriginClientX = e.clientX;
+      dragOriginClientY = e.clientY;
+      dragPointerId = e.pointerId;
+      dragDidMove = false;
+      dragging = dragMode === "pan";
+      scaling = dragMode === "scale";
+
+      window.addEventListener("pointermove", onWindowPointerMove);
+      window.addEventListener("pointerup", onWindowPointerUp);
+      window.addEventListener("pointercancel", onWindowPointerCancel);
+      return;
+    }
+
+    // Default: pan the viewport (left drag, middle, or Alt+left)
+    if (e.button === 1 || e.button === 0) {
       if (dragClipId) {
         detachDragListeners();
         clearDrag();
       }
       startViewPan(e);
-      return;
     }
-    if (e.button !== 0) return;
-
-    // Shift+drag: scale selected clip, or topmost under playhead
-    const scaleMode = e.shiftKey;
-    const clip = scaleMode ? transformTargetClip() : selectedClip();
-    if (!clip) {
-      // No clip to transform: left-drag pans the view
-      startViewPan(e);
-      return;
-    }
-
-    e.preventDefault();
-    if (panningView) {
-      detachViewPanListeners();
-      panningView = false;
-    }
-    if (dragClipId) {
-      detachDragListeners();
-      clearDrag();
-    }
-
-    // Promote topmost to selection when Shift-scaling without a selection
-    if (scaleMode && app.selectedClipId !== clip.id) {
-      app.selectedClipId = clip.id;
-    }
-
-    dragClipId = clip.id;
-    dragMode = scaleMode ? "scale" : "pan";
-    dragBefore = cloneProject(project());
-    dragStartX = clip.transform.x;
-    dragStartY = clip.transform.y;
-    dragStartScale = clip.transform.scale;
-    dragOriginClientX = e.clientX;
-    dragOriginClientY = e.clientY;
-    dragPointerId = e.pointerId;
-    dragDidMove = false;
-    dragging = dragMode === "pan";
-    scaling = dragMode === "scale";
-
-    window.addEventListener("pointermove", onWindowPointerMove);
-    window.addEventListener("pointerup", onWindowPointerUp);
-    window.addEventListener("pointercancel", onWindowPointerCancel);
   }
 
   function onWindowPointerMove(e: PointerEvent) {
@@ -999,7 +1004,7 @@
   }
 
   canvas.dragging {
-    cursor: grabbing;
+    cursor: move;
   }
 
   canvas.scaling {

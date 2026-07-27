@@ -14,11 +14,12 @@ export function drawRect(
     return { x: 0, y: 0, w: 0, h: 0 };
   }
 
+  // Contain-fit, then uniform scale about the framed center (pan is center offset).
   const fitScale = Math.min(canvasW / srcW, canvasH / srcH);
   const drawW = srcW * fitScale * transform.scale;
   const drawH = srcH * fitScale * transform.scale;
-  const drawX = (canvasW - srcW * fitScale) / 2 + transform.x;
-  const drawY = (canvasH - srcH * fitScale) / 2 + transform.y;
+  const drawX = (canvasW - drawW) / 2 + transform.x;
+  const drawY = (canvasH - drawH) / 2 + transform.y;
 
   return { x: drawX, y: drawY, w: drawW, h: drawH };
 }

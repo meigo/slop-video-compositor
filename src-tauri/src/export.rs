@@ -482,7 +482,8 @@ mod tests {
             .map(|i| &args[i + 1])
             .unwrap();
         assert!(fc.contains("scale=200:200"), "fc={fc}");
-        assert!(fc.contains("overlay=60:-5:shortest=1"), "fc={fc}");
+        // scale about center: (200-200)/2+10=10, (100-200)/2-5=-55
+        assert!(fc.contains("overlay=10:-55:shortest=1"), "fc={fc}");
         assert!(fc.contains("duration=3.25"), "fc={fc}");
     }
 

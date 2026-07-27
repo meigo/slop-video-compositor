@@ -14,11 +14,12 @@ describe("drawRect", () => {
     expect(r.x).toBe(50);
     expect(r.y).toBe(0);
   });
-  it("applies scale and pan", () => {
+  it("scales about contain-fit center then applies pan", () => {
     const r = drawRect(100, 100, 200, 100, { scale: 2, x: 10, y: -5 });
+    // (canvas - scaled)/2 + pan → (200-200)/2+10=10, (100-200)/2-5=-55
     expect(r.w).toBe(200);
     expect(r.h).toBe(200);
-    expect(r.x).toBe(50 + 10); // center base 50 + pan
-    expect(r.y).toBe(0 - 5);
+    expect(r.x).toBe(10);
+    expect(r.y).toBe(-55);
   });
 });

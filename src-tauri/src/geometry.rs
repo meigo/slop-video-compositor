@@ -27,14 +27,15 @@ pub fn draw_rect(
         };
     }
 
+    // Contain-fit, then uniform scale about the framed center (pan is center offset).
     let fit_scale = f64::min(
         canvas_w as f64 / src_w as f64,
         canvas_h as f64 / src_h as f64,
     );
     let draw_w = src_w as f64 * fit_scale * scale;
     let draw_h = src_h as f64 * fit_scale * scale;
-    let draw_x = (canvas_w as f64 - src_w as f64 * fit_scale) / 2.0 + tx;
-    let draw_y = (canvas_h as f64 - src_h as f64 * fit_scale) / 2.0 + ty;
+    let draw_x = (canvas_w as f64 - draw_w) / 2.0 + tx;
+    let draw_y = (canvas_h as f64 - draw_h) / 2.0 + ty;
 
     DrawRect {
         x: draw_x,
@@ -77,12 +78,13 @@ mod tests {
     }
 
     #[test]
-    fn applies_scale_and_pan() {
+    fn applies_scale_about_center_and_pan() {
         let r = draw_rect(100, 100, 200, 100, 2.0, 10.0, -5.0);
+        // (canvas - scaled)/2 + pan → x=10, y=-55
         approx_eq(r.w, 200.0);
         approx_eq(r.h, 200.0);
-        approx_eq(r.x, 50.0 + 10.0); // center base 50 + pan
-        approx_eq(r.y, 0.0 - 5.0);
+        approx_eq(r.x, 10.0);
+        approx_eq(r.y, -55.0);
     }
 
     #[test]
