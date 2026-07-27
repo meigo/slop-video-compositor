@@ -596,136 +596,148 @@
       onwheel={onWheel}
     >
       <div class="content" style:width="{contentWidth}px">
-        <!-- Ruler (click + drag to scrub) -->
-        <div
-          class="ruler"
-          class:scrubbing
-          style:height="{RULER_H}px"
-          role="slider"
-          tabindex="0"
-          aria-label="Timeline ruler — drag to scrub"
-          aria-valuemin={0}
-          aria-valuemax={endTime}
-          aria-valuenow={app.playhead}
-          aria-valuetext={formatTimestamp(app.playhead)}
-          onpointerdown={onRulerPointerDown}
-        >
-          {#each ticks as t (t)}
-            <div class="tick" style:left="{t * pxPerSecond}px">
-              <span class="tick-label">{formatTimestamp(t)}</span>
-            </div>
-          {/each}
+        <div class="timeline-stack">
+          <!-- Ruler (click + drag to scrub) -->
+          <div
+            class="ruler"
+            class:scrubbing
+            style:height="{RULER_H}px"
+            role="slider"
+            tabindex="0"
+            aria-label="Timeline ruler — drag to scrub"
+            aria-valuemin={0}
+            aria-valuemax={endTime}
+            aria-valuenow={app.playhead}
+            aria-valuetext={formatTimestamp(app.playhead)}
+            onpointerdown={onRulerPointerDown}
+          >
+            {#each ticks as t (t)}
+              <div class="tick" style:left="{t * pxPerSecond}px">
+                <span class="tick-label">{formatTimestamp(t)}</span>
+              </div>
+            {/each}
+          </div>
+
+          <!-- Tracks / clips -->
+          <div class="lanes" bind:this={lanesEl} style:min-height="{displayTracks.length * TRACK_H}px">
+            {#each displayTracks as track (track.id)}
+              <div
+                class="lane"
+                class:selected={track.id === app.selectedTrackId}
+                data-track-id={track.id}
+                style:height="{TRACK_H}px"
+                role="presentation"
+                onpointerdown={(e) => onLaneBackgroundPointerDown(e, track.id)}
+              >
+                {#each track.clips as clip (clip.id)}
+                  {@const dur = clipDuration(clip)}
+                  {@const left = clip.timelineStart * pxPerSecond}
+                  {@const width = Math.max(dur * pxPerSecond, 4)}
+                  <div
+                    class="clip"
+                    class:active={clip.id === app.selectedClipId}
+                    class:dragging={dragClipId === clip.id}
+                    style:left="{left}px"
+                    style:width="{width}px"
+                    title={clip.sourcePath}
+                    role="button"
+                    tabindex="0"
+                    onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id)}
+                    onkeydown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        selectClip(clip.id, track.id);
+                      }
+                    }}
+                  >
+                    <span
+                      class="edge in"
+                      data-edge="in"
+                      style:width="{EDGE_PX}px"
+                      aria-hidden="true"
+                      onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id, "in")}
+                    ></span>
+                    <span class="clip-label">{basename(clip.sourcePath)}</span>
+                    <span
+                      class="edge out"
+                      data-edge="out"
+                      style:width="{EDGE_PX}px"
+                      aria-hidden="true"
+                      onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id, "out")}
+                    ></span>
+                  </div>
+                {/each}
+              </div>
+            {/each}
+          </div>
         </div>
 
-        <!-- Tracks / clips -->
-        <div class="lanes" bind:this={lanesEl} style:min-height="{displayTracks.length * TRACK_H}px">
-          {#each displayTracks as track (track.id)}
-            <div
-              class="lane"
-              class:selected={track.id === app.selectedTrackId}
-              data-track-id={track.id}
-              style:height="{TRACK_H}px"
-              role="presentation"
-              onpointerdown={(e) => onLaneBackgroundPointerDown(e, track.id)}
-            >
-              {#each track.clips as clip (clip.id)}
-                {@const dur = clipDuration(clip)}
-                {@const left = clip.timelineStart * pxPerSecond}
-                {@const width = Math.max(dur * pxPerSecond, 4)}
-                <div
-                  class="clip"
-                  class:active={clip.id === app.selectedClipId}
-                  class:dragging={dragClipId === clip.id}
-                  style:left="{left}px"
-                  style:width="{width}px"
-                  title={clip.sourcePath}
-                  role="button"
-                  tabindex="0"
-                  onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id)}
-                  onkeydown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      selectClip(clip.id, track.id);
-                    }
-                  }}
-                >
-                  <span
-                    class="edge in"
-                    data-edge="in"
-                    style:width="{EDGE_PX}px"
-                    aria-hidden="true"
-                    onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id, "in")}
-                  ></span>
-                  <span class="clip-label">{basename(clip.sourcePath)}</span>
-                  <span
-                    class="edge out"
-                    data-edge="out"
-                    style:width="{EDGE_PX}px"
-                    aria-hidden="true"
-                    onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id, "out")}
-                  ></span>
-                </div>
-              {/each}
-            </div>
-          {/each}
-        </div>
-
-        <!-- Playhead (drag to scrub) -->
+        <!--
+          Markers live in a dedicated overlay so the sticky ruler never paints over them.
+          pointer-events none on the layer; hits re-enabled on the handles.
+        -->
         <div
-          class="playhead"
-          class:scrubbing
-          style:left="{app.playhead * pxPerSecond}px"
+          class="markers"
           style:height="{RULER_H + displayTracks.length * TRACK_H}px"
-          role="slider"
-          tabindex="0"
-          aria-label="Playhead — drag to scrub"
-          aria-valuemin={0}
-          aria-valuemax={endTime}
-          aria-valuenow={app.playhead}
-          aria-valuetext={formatTimestamp(app.playhead)}
-          onpointerdown={onPlayheadPointerDown}
-          onkeydown={(e) => {
-            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-              e.preventDefault();
-              const step = e.shiftKey ? 1 : 0.1;
-              const delta = e.key === "ArrowLeft" ? -step : step;
-              setPlayhead(Math.max(0, app.playhead + delta));
-              app.playing = false;
-            }
-          }}
+          aria-hidden="false"
         >
-          <div class="playhead-hit" aria-hidden="true"></div>
-          <div class="playhead-head" aria-hidden="true"></div>
-        </div>
+          <!-- Playhead (drag to scrub) -->
+          <div
+            class="playhead"
+            class:scrubbing
+            style:left="{app.playhead * pxPerSecond}px"
+            style:height="100%"
+            role="slider"
+            tabindex="0"
+            aria-label="Playhead — drag to scrub"
+            aria-valuemin={0}
+            aria-valuemax={endTime}
+            aria-valuenow={app.playhead}
+            aria-valuetext={formatTimestamp(app.playhead)}
+            onpointerdown={onPlayheadPointerDown}
+            onkeydown={(e) => {
+              if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                e.preventDefault();
+                const step = e.shiftKey ? 1 : 0.1;
+                const delta = e.key === "ArrowLeft" ? -step : step;
+                setPlayhead(Math.max(0, app.playhead + delta));
+                app.playing = false;
+              }
+            }}
+          >
+            <div class="playhead-hit" aria-hidden="true"></div>
+            <div class="playhead-head" aria-hidden="true"></div>
+          </div>
 
-        <!-- Sequence end handle — drag to set global timeline length -->
-        <div
-          class="duration-handle"
-          class:active={resizingDuration}
-          style:left="{seqDuration * pxPerSecond}px"
-          style:height="{RULER_H + displayTracks.length * TRACK_H}px"
-          style:width="{DURATION_HANDLE_PX}px"
-          role="slider"
-          tabindex="0"
-          aria-label="Sequence length — drag to adjust"
-          aria-valuemin={contentEnd}
-          aria-valuemax={Math.max(contentEnd + 3600, seqDuration)}
-          aria-valuenow={seqDuration}
-          aria-valuetext="{formatTimestamp(seqDuration)} ({seqDuration.toFixed(2)}s)"
-          title="Sequence length {formatTimestamp(seqDuration)} — drag to extend or shrink (min = last clip)"
-          onpointerdown={startDurationResize}
-          onkeydown={(e) => {
-            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-              e.preventDefault();
-              const step = e.shiftKey ? 1 : 0.1;
-              const delta = e.key === "ArrowLeft" ? -step : step;
-              setTimelineDuration(seqDuration + delta);
-            }
-          }}
-        >
-          <div class="duration-handle-bar" aria-hidden="true"></div>
-          <div class="duration-handle-grip" aria-hidden="true"></div>
+          <!-- Sequence end handle — drag to set global timeline length -->
+          <div
+            class="duration-handle"
+            class:active={resizingDuration}
+            style:left="{seqDuration * pxPerSecond}px"
+            style:height="100%"
+            style:width="{DURATION_HANDLE_PX}px"
+            role="slider"
+            tabindex="0"
+            aria-label="Sequence length — drag to adjust"
+            aria-valuemin={contentEnd}
+            aria-valuemax={Math.max(contentEnd + 3600, seqDuration)}
+            aria-valuenow={seqDuration}
+            aria-valuetext="{formatTimestamp(seqDuration)} ({seqDuration.toFixed(2)}s)"
+            title="Sequence length {formatTimestamp(seqDuration)} — drag to extend or shrink (min = last clip)"
+            onpointerdown={startDurationResize}
+            onkeydown={(e) => {
+              if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                e.preventDefault();
+                const step = e.shiftKey ? 1 : 0.1;
+                const delta = e.key === "ArrowLeft" ? -step : step;
+                setTimelineDuration(seqDuration + delta);
+              }
+            }}
+          >
+            <div class="duration-handle-bar" aria-hidden="true"></div>
+            <div class="duration-handle-grip" aria-hidden="true"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -883,14 +895,17 @@
   .content {
     position: relative;
     min-height: 100%;
-    /* Own stacking root so playhead / duration stay above lanes + clips */
-    isolation: isolate;
+  }
+
+  .timeline-stack {
+    position: relative;
+    z-index: 1;
   }
 
   .ruler {
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: 2;
     background: var(--surface-2);
     border-bottom: 1px solid var(--border);
     cursor: ew-resize;
@@ -900,6 +915,26 @@
 
   .ruler.scrubbing {
     cursor: grabbing;
+  }
+
+  /* Always above sticky ruler + tracks (sibling stacking, not trapped under sticky) */
+  .markers {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .markers .playhead,
+  .markers .duration-handle {
+    pointer-events: none;
+  }
+
+  .markers .playhead-hit,
+  .markers .duration-handle {
+    pointer-events: auto;
   }
 
   .tick {
@@ -922,12 +957,10 @@
 
   .lanes {
     position: relative;
-    z-index: 1;
   }
 
   .lane {
     position: relative;
-    z-index: 1;
     border-bottom: 1px solid var(--border);
     background: var(--bg);
   }
@@ -995,22 +1028,15 @@
     background: rgba(255, 255, 255, 0.18);
   }
 
-  /*
-   * Overlay markers must sit above sticky ruler (5) and lanes/clips (1).
-   * Use a solid 2px element (not border-on-width-0) so the line doesn’t drop out
-   * under sticky compositing / subpixel rounding.
-   */
   .playhead {
     position: absolute;
     top: 0;
     width: 2px;
     margin-left: -1px;
     background: var(--danger);
-    z-index: 30;
     cursor: ew-resize;
     touch-action: none;
     outline: none;
-    pointer-events: none;
   }
 
   .playhead.scrubbing {
@@ -1021,7 +1047,7 @@
     background: rgba(240, 113, 120, 0.18);
   }
 
-  /* Wide invisible hit target for easier grab (only interactive part) */
+  /* Wide invisible hit target for easier grab */
   .playhead-hit {
     position: absolute;
     top: 0;
@@ -1029,26 +1055,23 @@
     width: 12px;
     height: 100%;
     background: transparent;
-    pointer-events: auto;
   }
 
   .playhead-head {
     position: absolute;
     top: 0;
-    left: -4px;
+    left: -5px;
     width: 0;
     height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 8px solid var(--danger);
-    pointer-events: none;
-    z-index: 1;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 9px solid var(--danger);
+    filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8));
   }
 
   .duration-handle {
     position: absolute;
     top: 0;
-    z-index: 31;
     margin-left: -5px;
     cursor: ew-resize;
     touch-action: none;
@@ -1057,7 +1080,7 @@
 
   .duration-handle.active .duration-handle-bar,
   .duration-handle:hover .duration-handle-bar {
-    background: var(--accent);
+    background: var(--accent-hover);
   }
 
   .duration-handle-bar {
@@ -1067,20 +1090,18 @@
     left: 4px;
     width: 2px;
     background: var(--accent);
-    pointer-events: none;
   }
 
   .duration-handle-grip {
     position: absolute;
-    top: 2px;
+    top: 3px;
     left: 0;
     width: 10px;
-    height: 14px;
+    height: 16px;
     border-radius: 2px;
     background: var(--accent);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    pointer-events: none;
-    z-index: 1;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
   }
 
   .duration-handle:focus-visible .duration-handle-grip {
