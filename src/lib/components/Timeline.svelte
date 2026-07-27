@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import Layers from "@lucide/svelte/icons/layers";
+  import Plus from "@lucide/svelte/icons/plus";
+  import ZoomIn from "@lucide/svelte/icons/zoom-in";
   import {
     addTrack,
     deleteClip,
@@ -324,7 +327,10 @@
 <section class="timeline" aria-label="Timeline">
   <div class="timeline-head">
     <div class="head-left">
-      <span class="title">Timeline</span>
+      <span class="title">
+        <Layers size={15} strokeWidth={2} aria-hidden="true" />
+        Timeline
+      </span>
       <span class="muted">
         {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
         · {clipCount} clip{clipCount === 1 ? "" : "s"}
@@ -333,6 +339,7 @@
     </div>
     <div class="head-right">
       <label class="zoom">
+        <ZoomIn size={14} strokeWidth={2} class="zoom-icon" aria-hidden="true" />
         <span class="muted">Zoom</span>
         <input
           type="range"
@@ -345,7 +352,10 @@
         />
         <span class="mono muted">{Math.round(pxPerSecond)} px/s</span>
       </label>
-      <button type="button" class="ghost" onclick={onAddTrack}>+ Track</button>
+      <button type="button" class="ghost" onclick={onAddTrack}>
+        <Plus size={16} strokeWidth={2} aria-hidden="true" />
+        <span>Track</span>
+      </button>
     </div>
   </div>
 
@@ -494,6 +504,9 @@
   }
 
   .title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     font-size: 0.85rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -518,9 +531,20 @@
     font-size: 0.85rem;
   }
 
+  .zoom :global(.zoom-icon) {
+    flex-shrink: 0;
+    opacity: 0.75;
+  }
+
   .zoom input[type="range"] {
     width: 7rem;
     accent-color: var(--accent);
+  }
+
+  .head-right :global(button) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
   }
 
   .timeline-body {

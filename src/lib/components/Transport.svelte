@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Pause from "@lucide/svelte/icons/pause";
+  import Play from "@lucide/svelte/icons/play";
+  import Square from "@lucide/svelte/icons/square";
   import { formatTimestamp } from "$lib/time";
 
   interface Props {
@@ -10,13 +13,27 @@
   }
 
   let { playhead, duration, playing, onTogglePlay, onStop }: Props = $props();
+
+  const ICON = 16;
 </script>
 
 <div class="transport">
-  <button type="button" class="ghost" onclick={onTogglePlay}>
-    {playing ? "Pause" : "Play"}
+  <button
+    type="button"
+    class="ghost"
+    onclick={onTogglePlay}
+    title={playing ? "Pause (Space)" : "Play (Space)"}
+    aria-label={playing ? "Pause" : "Play"}
+  >
+    {#if playing}
+      <Pause size={ICON} strokeWidth={2} aria-hidden="true" />
+    {:else}
+      <Play size={ICON} strokeWidth={2} aria-hidden="true" />
+    {/if}
   </button>
-  <button type="button" class="ghost" onclick={onStop}>Stop</button>
+  <button type="button" class="ghost" onclick={onStop} title="Stop" aria-label="Stop">
+    <Square size={15} strokeWidth={2.25} aria-hidden="true" />
+  </button>
   <span class="time" aria-label="Playhead time">
     {formatTimestamp(playhead)}
     <span class="sep">/</span>
@@ -30,6 +47,14 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.4rem 0.15rem;
+  }
+
+  .transport :global(button) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.1rem;
+    padding: 0.4em 0.55em;
   }
 
   .time {

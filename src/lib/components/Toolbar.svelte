@@ -1,4 +1,15 @@
 <script lang="ts">
+  import FilePlus from "@lucide/svelte/icons/file-plus";
+  import FolderOpen from "@lucide/svelte/icons/folder-open";
+  import Save from "@lucide/svelte/icons/save";
+  import SaveAll from "@lucide/svelte/icons/save-all";
+  import Film from "@lucide/svelte/icons/film";
+  import Download from "@lucide/svelte/icons/download";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+  import Undo2 from "@lucide/svelte/icons/undo-2";
+  import Redo2 from "@lucide/svelte/icons/redo-2";
+  import Ratio from "@lucide/svelte/icons/ratio";
+
   interface Props {
     canvasWidth: number;
     canvasHeight: number;
@@ -37,6 +48,8 @@
     onCanvasChange,
   }: Props = $props();
 
+  const ICON = 16;
+
   let w = $state(1920);
   let h = $state(1080);
 
@@ -67,16 +80,34 @@
 
 <header class="toolbar">
   <div class="group">
-    <button type="button" class="ghost" onclick={onNew}>New</button>
-    <button type="button" class="ghost" onclick={onOpen}>Open</button>
-    <button type="button" class="ghost" onclick={onSave} title={dirty ? "Unsaved changes" : "Save"}>
-      Save{dirty ? " *" : ""}
+    <button type="button" class="ghost" onclick={onNew}>
+      <FilePlus size={ICON} strokeWidth={2} aria-hidden="true" />
+      <span>New</span>
     </button>
-    <button type="button" class="ghost" onclick={onSaveAs}>Save As</button>
+    <button type="button" class="ghost" onclick={onOpen}>
+      <FolderOpen size={ICON} strokeWidth={2} aria-hidden="true" />
+      <span>Open</span>
+    </button>
+    <button
+      type="button"
+      class="ghost"
+      onclick={onSave}
+      title={dirty ? "Unsaved changes" : "Save"}
+    >
+      <Save size={ICON} strokeWidth={2} aria-hidden="true" />
+      <span>Save{dirty ? " *" : ""}</span>
+    </button>
+    <button type="button" class="ghost" onclick={onSaveAs}>
+      <SaveAll size={ICON} strokeWidth={2} aria-hidden="true" />
+      <span>Save As</span>
+    </button>
   </div>
 
   <div class="group">
-    <button type="button" class="ghost" onclick={onImport}>Import</button>
+    <button type="button" class="ghost" onclick={onImport}>
+      <Film size={ICON} strokeWidth={2} aria-hidden="true" />
+      <span>Import</span>
+    </button>
     <button
       type="button"
       onclick={onExport}
@@ -87,16 +118,29 @@
           ? "Needs ffmpeg and at least one clip"
           : "Export H.264+AAC MP4"}
     >
-      {exporting ? "Exporting…" : "Export"}
+      {#if exporting}
+        <LoaderCircle class="spin" size={ICON} strokeWidth={2} aria-hidden="true" />
+        <span>Exporting…</span>
+      {:else}
+        <Download size={ICON} strokeWidth={2} aria-hidden="true" />
+        <span>Export</span>
+      {/if}
     </button>
   </div>
 
   <div class="group">
-    <button type="button" class="ghost" onclick={onUndo} disabled={!canUndo}>Undo</button>
-    <button type="button" class="ghost" onclick={onRedo} disabled={!canRedo}>Redo</button>
+    <button type="button" class="ghost" onclick={onUndo} disabled={!canUndo} title="Undo">
+      <Undo2 size={ICON} strokeWidth={2} aria-hidden="true" />
+      <span>Undo</span>
+    </button>
+    <button type="button" class="ghost" onclick={onRedo} disabled={!canRedo} title="Redo">
+      <Redo2 size={ICON} strokeWidth={2} aria-hidden="true" />
+      <span>Redo</span>
+    </button>
   </div>
 
   <div class="group canvas">
+    <Ratio size={ICON} strokeWidth={2} class="canvas-icon" aria-hidden="true" />
     <label>
       <span>W</span>
       <input
@@ -144,10 +188,21 @@
     gap: 0.35rem;
   }
 
+  .group :global(button) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
   .canvas {
     margin-left: auto;
     color: var(--muted);
     font-size: 0.85rem;
+  }
+
+  .canvas :global(.canvas-icon) {
+    flex-shrink: 0;
+    opacity: 0.75;
   }
 
   .canvas label {
@@ -163,5 +218,15 @@
   .times {
     opacity: 0.6;
     padding: 0 0.1rem;
+  }
+
+  :global(.spin) {
+    animation: spin 0.9s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

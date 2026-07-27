@@ -1,4 +1,8 @@
 <script lang="ts">
+  import CircleAlert from "@lucide/svelte/icons/circle-alert";
+  import FileText from "@lucide/svelte/icons/file-text";
+  import Info from "@lucide/svelte/icons/info";
+
   interface Props {
     status: string;
     dirty?: boolean;
@@ -14,17 +18,28 @@
   }: Props = $props();
 
   const label = $derived(projectPath ? projectPath.split(/[/\\]/).pop() : projectName);
+  const isError = $derived(
+    /fail|error|missing|not found|require/i.test(status) && status.trim().length > 0,
+  );
 </script>
 
 <div class="status-line" role="status">
   <span class="project">
+    <FileText size={14} strokeWidth={2} class="file-icon" aria-hidden="true" />
     <strong>{label}</strong>
     {#if dirty}
       <span class="dirty" title="Unsaved changes">•</span>
     {/if}
   </span>
   <span class="sep">·</span>
-  <span class="status">{status}</span>
+  <span class="status" class:error={isError}>
+    {#if isError}
+      <CircleAlert size={15} strokeWidth={2} aria-hidden="true" />
+    {:else}
+      <Info size={15} strokeWidth={2} class="info-icon" aria-hidden="true" />
+    {/if}
+    <span>{status}</span>
+  </span>
 </div>
 
 <style>
@@ -34,9 +49,20 @@
     color: var(--muted);
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
+    align-items: center;
     gap: 0.35rem;
     padding: 0 0.15rem;
+  }
+
+  .project {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .project :global(.file-icon) {
+    flex-shrink: 0;
+    opacity: 0.75;
   }
 
   .project strong {
@@ -47,7 +73,6 @@
   .dirty {
     color: var(--warn);
     font-weight: 700;
-    margin-left: 0.15rem;
   }
 
   .sep {
@@ -55,6 +80,19 @@
   }
 
   .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     color: var(--muted);
+    min-width: 0;
+  }
+
+  .status.error {
+    color: var(--danger);
+  }
+
+  .status :global(.info-icon) {
+    opacity: 0.8;
+    flex-shrink: 0;
   }
 </style>

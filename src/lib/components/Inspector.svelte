@@ -1,4 +1,10 @@
 <script lang="ts">
+  import Film from "@lucide/svelte/icons/film";
+  import Link2 from "@lucide/svelte/icons/link-2";
+  import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import Volume2 from "@lucide/svelte/icons/volume-2";
+  import VolumeX from "@lucide/svelte/icons/volume-x";
   import { formatTimestamp } from "$lib/time";
   import type { Clip, SourceMeta } from "$lib/types";
 
@@ -18,6 +24,8 @@
 
   let { clip, meta, basename, onUpdate, onResetTransform, onRelink }: Props = $props();
 
+  const ICON = 16;
+
   function num(e: Event): number {
     return Number((e.target as HTMLInputElement).value);
   }
@@ -31,17 +39,33 @@
   {:else}
     <div class="field path">
       <span class="label">Source</span>
-      <span class="value mono" title={clip.sourcePath}>{basename(clip.sourcePath)}</span>
+      <span class="value mono source-row" title={clip.sourcePath}>
+        <Film size={14} strokeWidth={2} class="source-icon" aria-hidden="true" />
+        <span>{basename(clip.sourcePath)}</span>
+      </span>
       {#if !meta}
-        <span class="warn">Missing media — relink to restore</span>
+        <span class="warn">
+          <TriangleAlert size={14} strokeWidth={2} aria-hidden="true" />
+          Missing media — relink to restore
+        </span>
       {:else}
         <span class="meta muted">
           {meta.width}×{meta.height}
           · {formatTimestamp(meta.duration)}
-          · {meta.hasAudio ? "audio" : "no audio"}
+          ·
+          {#if meta.hasAudio}
+            <Volume2 size={13} strokeWidth={2} class="inline-icon" aria-hidden="true" />
+            audio
+          {:else}
+            <VolumeX size={13} strokeWidth={2} class="inline-icon" aria-hidden="true" />
+            no audio
+          {/if}
         </span>
       {/if}
-      <button type="button" class="ghost" onclick={onRelink}>Relink…</button>
+      <button type="button" class="ghost" onclick={onRelink}>
+        <Link2 size={ICON} strokeWidth={2} aria-hidden="true" />
+        <span>Relink…</span>
+      </button>
     </div>
 
     <div class="grid">
@@ -113,7 +137,10 @@
         />
       </label>
     </div>
-    <button type="button" class="ghost reset" onclick={onResetTransform}>Reset transform</button>
+    <button type="button" class="ghost reset" onclick={onResetTransform}>
+      <RotateCcw size={ICON} strokeWidth={2} aria-hidden="true" />
+      <span>Reset transform</span>
+    </button>
   {/if}
 </aside>
 
@@ -130,6 +157,12 @@
     overflow: auto;
   }
 
+  .inspector :global(button) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
   h2 {
     margin: 0;
     font-size: 0.85rem;
@@ -137,6 +170,17 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--muted);
+  }
+
+  .source-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .source-row :global(.source-icon) {
+    flex-shrink: 0;
+    opacity: 0.75;
   }
 
   h3 {
@@ -196,12 +240,24 @@
   }
 
   .warn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     color: var(--warn);
     font-size: 0.8rem;
   }
 
   .meta {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem 0.25rem;
     line-height: 1.3;
+  }
+
+  .meta :global(.inline-icon) {
+    flex-shrink: 0;
+    opacity: 0.85;
   }
 
   input {
