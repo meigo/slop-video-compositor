@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import Layers from "@lucide/svelte/icons/layers";
+  import Maximize2 from "@lucide/svelte/icons/maximize-2";
   import Plus from "@lucide/svelte/icons/plus";
   import ZoomIn from "@lucide/svelte/icons/zoom-in";
   import {
@@ -485,6 +486,16 @@
     pxPerSecond = clamp(pxPerSecond * factor, MIN_PPS, MAX_PPS);
   }
 
+  /** Fit full sequence width into the visible scroll area (100% / reset zoom). */
+  function fitZoomToWidth() {
+    if (!scrollEl) return;
+    const available = Math.max(1, scrollEl.clientWidth - DURATION_HANDLE_PX - 2);
+    const secs = Math.max(seqDuration, 1e-3);
+    pxPerSecond = clamp(available / secs, MIN_PPS, MAX_PPS);
+    scrollEl.scrollLeft = 0;
+    app.status = `Zoom fit ${Math.round(pxPerSecond)} px/s`;
+  }
+
   function isTypingTarget(target: EventTarget | null): boolean {
     const el = target as HTMLElement | null;
     const tag = el?.tagName?.toLowerCase();
@@ -553,7 +564,7 @@
         <input
           class="compact mono"
           type="number"
-          min={contentEnd}
+          min="0"
           step="0.1"
           bind:value={durationInput}
           onchange={applyDurationInput}
@@ -578,6 +589,16 @@
           aria-label="Timeline zoom pixels per second"
         />
         <span class="mono muted">{Math.round(pxPerSecond)} px/s</span>
+        <button
+          type="button"
+          class="ghost zoom-fit"
+          onclick={fitZoomToWidth}
+          title="Fit sequence to timeline width (100%)"
+          aria-label="Fit sequence to timeline width"
+        >
+          <Maximize2 size={14} strokeWidth={2} aria-hidden="true" />
+          <span>Fit</span>
+        </button>
       </label>
       <button type="button" class="ghost" onclick={onAddTrack}>
         <Plus size={16} strokeWidth={2} aria-hidden="true" />
@@ -833,6 +854,12 @@
   .zoom input[type="range"] {
     width: 7rem;
     accent-color: var(--accent);
+  }
+
+  .zoom-fit {
+    padding: 0.2em 0.45em;
+    font-size: 0.8rem;
+    font-weight: 500;
   }
 
   .head-right :global(button) {
