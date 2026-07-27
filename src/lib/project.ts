@@ -2,6 +2,8 @@ import { newId } from "./id";
 import type { Clip, ClipTransform, Project, Track } from "./types";
 
 export const DEFAULT_CANVAS = { width: 1920, height: 1080 };
+/** Default empty-sequence length (seconds). */
+export const DEFAULT_DURATION = 10;
 
 export function defaultTransform(): ClipTransform {
   return { scale: 1, x: 0, y: 0 };
@@ -16,6 +18,7 @@ export function createProject(name = "Untitled"): Project {
     version: 1,
     name,
     canvas: { ...DEFAULT_CANVAS },
+    duration: DEFAULT_DURATION,
     tracks,
   };
 }
@@ -32,7 +35,8 @@ export function cloneProject(p: Project): Project {
   return JSON.parse(JSON.stringify(p)) as Project;
 }
 
-export function projectDuration(p: Project): number {
+/** End time of the last clip (0 if empty). Ignores stored sequence duration. */
+export function contentDuration(p: Project): number {
   let max = 0;
   for (const track of p.tracks) {
     for (const clip of track.clips) {
@@ -41,6 +45,23 @@ export function projectDuration(p: Project): number {
     }
   }
   return max;
+}
+
+/**
+ * Effective timeline / export length: max(user duration, content).
+ * Clips always win so the handle cannot crop media.
+ */
+export function projectDuration(p: Project): number {
+  const stored = Number.isFinite(p.duration) ? Math.max(0, p.duration) : 0;
+  return Math.max(contentDuration(p), stored);
+}
+
+/** Set sequence length (seconds). Clamped to at least content duration. */
+export function setProjectDuration(p: Project, secs: number): Project {
+  const content = contentDuration(p);
+  const duration = Math.max(content, Number.isFinite(secs) ? Math.max(0, secs) : 0);
+  if (p.duration === duration) return p;
+  return { ...p, duration };
 }
 
 function isFiniteNumber(n: unknown): n is number {
@@ -132,11 +153,25 @@ export function parseProject(json: unknown): Project {
   if (!Array.isArray(p.tracks)) {
     throw new Error("project.tracks: expected array");
   }
+  const tracks = p.tracks.map((track, i) => parseTrack(track, `project.tracks[${i}]`));
+  const content = contentDuration({
+    version: 1,
+    name: p.name,
+    canvas: { width: canvas.width, height: canvas.height },
+    duration: 0,
+    tracks,
+  });
+  // Back-compat: missing duration → fit content (0 if empty)
+  let duration = content;
+  if (isFiniteNumber(p.duration) && p.duration >= 0) {
+    duration = Math.max(content, p.duration);
+  }
   return {
     version: 1,
     name: p.name,
     canvas: { width: canvas.width, height: canvas.height },
-    tracks: p.tracks.map((track, i) => parseTrack(track, `project.tracks[${i}]`)),
+    duration,
+    tracks,
   };
 }
 

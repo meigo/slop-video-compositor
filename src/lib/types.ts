@@ -15,6 +15,11 @@ export type Project = {
   version: 1;
   name: string;
   canvas: { width: number; height: number };
+  /**
+   * Sequence length in seconds (user-editable).
+   * Effective length is max(duration, last clip end) so clips are never cropped by the handle.
+   */
+  duration: number;
   tracks: Track[];
 };
 

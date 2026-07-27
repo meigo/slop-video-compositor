@@ -188,12 +188,15 @@ describe("deleteClip", () => {
     expect(next.tracks[0].clips[0].timelineStart).toBe(10); // gap left
   });
 
-  it("shrinks project duration when deleting the last clip", () => {
+  it("leaves stored sequence duration when deleting the last clip", () => {
     const p = projectWithClip(sampleClip({ timelineStart: 0, sourceIn: 0, sourceOut: 5 }));
+    p.duration = 5;
     expect(projectDuration(p)).toBe(5);
     const next = deleteClip(p, "c1");
     expect(next.tracks[0].clips).toHaveLength(0);
-    expect(projectDuration(next)).toBe(0);
+    // Stored length is kept; user can shrink via the sequence-length handle
+    expect(next.duration).toBe(5);
+    expect(projectDuration(next)).toBe(5);
   });
 
   it("is no-op for missing clip", () => {

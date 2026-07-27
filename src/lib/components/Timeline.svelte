@@ -11,7 +11,13 @@
     trimClipIn,
     trimClipOut,
   } from "$lib/clips";
-  import { clipDuration, cloneProject, projectDuration } from "$lib/project";
+  import {
+    clipDuration,
+    cloneProject,
+    contentDuration,
+    projectDuration,
+    setProjectDuration,
+  } from "$lib/project";
   import { clamp, formatTimestamp } from "$lib/time";
   import type { Project } from "$lib/types";
   import {
@@ -20,11 +26,13 @@
     commitProject,
     project,
     setPlayhead,
+    setTimelineDuration,
   } from "../../state/appState.svelte";
 
   const TRACK_H = 40;
   const RULER_H = 28;
   const EDGE_PX = 7;
+  const DURATION_HANDLE_PX = 10;
   const MIN_PPS = 6;
   const MAX_PPS = 240;
   const DEFAULT_PPS = 48;
@@ -52,12 +60,30 @@
   let scrubbing = $state(false);
   let scrubPointerId: number | null = null;
 
+  /** Sequence-length handle at the right of the timeline. */
+  let resizingDuration = $state(false);
+  let durationPointerId: number | null = null;
+  let durationDragBefore: Project | null = null;
+
+  /** Bound to the length number field (seconds). */
+  let durationInput = $state(10);
+
   const p = $derived(project());
-  const endTime = $derived(Math.max(projectDuration(p), app.playhead, 10));
+  const seqDuration = $derived(projectDuration(p));
+  const contentEnd = $derived(contentDuration(p));
+  /** Visual span: sequence length, and room to scrub slightly past if needed. */
+  const endTime = $derived(Math.max(seqDuration, app.playhead, 1));
   const contentWidth = $derived(Math.ceil(endTime * pxPerSecond) + 48);
   /** Highest priority (last array index) at top of UI. */
   const displayTracks = $derived([...p.tracks].reverse());
   const clipCount = $derived(p.tracks.reduce((n, t) => n + t.clips.length, 0));
+
+  $effect(() => {
+    // Keep the number field in sync when duration changes elsewhere
+    if (!resizingDuration) {
+      durationInput = Math.round(seqDuration * 100) / 100;
+    }
+  });
 
   function tickStep(pps: number): number {
     if (pps >= 100) return 0.5;
@@ -154,8 +180,8 @@
 
   function startScrub(e: PointerEvent) {
     if (e.button !== 0) return;
-    // Don't fight an active clip drag
-    if (dragKind) return;
+    // Don't fight an active clip drag or duration resize
+    if (dragKind || resizingDuration) return;
     // Restart if already scrubbing (e.g. second finger)
     if (scrubbing) endScrub();
 
@@ -169,6 +195,92 @@
     window.addEventListener("pointermove", onScrubPointerMove);
     window.addEventListener("pointerup", onScrubPointerUp);
     window.addEventListener("pointercancel", onScrubPointerUp);
+  }
+
+  function endDurationResize() {
+    resizingDuration = false;
+    durationPointerId = null;
+    window.removeEventListener("pointermove", onDurationPointerMove);
+    window.removeEventListener("pointerup", onDurationPointerUp);
+    window.removeEventListener("pointercancel", onDurationPointerUp);
+  }
+
+  function startDurationResize(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    if (scrubbing) endScrub();
+    if (dragKind) {
+      detachDragListeners();
+      clearDragState();
+    }
+    if (resizingDuration) endDurationResize();
+
+    try {
+      durationDragBefore = cloneProject(project());
+    } catch {
+      durationDragBefore = null;
+    }
+    resizingDuration = true;
+    durationPointerId = e.pointerId;
+    app.playing = false;
+
+    // Apply immediately so a click still sets length to this edge
+    const t = clientXToTime(e.clientX);
+    setPresentLive(setProjectDuration(project(), t));
+    durationInput = Math.round(projectDuration(project()) * 100) / 100;
+
+    window.addEventListener("pointermove", onDurationPointerMove);
+    window.addEventListener("pointerup", onDurationPointerUp);
+    window.addEventListener("pointercancel", onDurationPointerUp);
+  }
+
+  function onDurationPointerMove(e: PointerEvent) {
+    if (!resizingDuration) return;
+    if (durationPointerId !== null && e.pointerId !== durationPointerId) return;
+    const t = clientXToTime(e.clientX);
+    setPresentLive(setProjectDuration(project(), t));
+    durationInput = Math.round(projectDuration(project()) * 100) / 100;
+  }
+
+  function onDurationPointerUp(e: PointerEvent) {
+    if (durationPointerId !== null && e.pointerId !== durationPointerId) return;
+    const before = durationDragBefore;
+    const after = project();
+    durationDragBefore = null;
+    endDurationResize();
+
+    // Live path only rewrote present — one undo entry from the pre-drag snapshot.
+    if (before) {
+      app.history = {
+        past: [...app.history.past, before].slice(-50),
+        present: after,
+        future: [],
+      };
+    }
+    app.dirty = true;
+    app.status = `Timeline ${projectDuration(after).toFixed(2)}s`;
+    if (app.playhead > projectDuration(after)) {
+      app.playhead = projectDuration(after);
+    }
+  }
+
+  function applyDurationInput() {
+    const secs = Number(durationInput);
+    if (!Number.isFinite(secs)) {
+      durationInput = Math.round(seqDuration * 100) / 100;
+      return;
+    }
+    setTimelineDuration(secs);
+    durationInput = Math.round(projectDuration(project()) * 100) / 100;
+  }
+
+  function onDurationKey(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      applyDurationInput();
+      (e.target as HTMLElement).blur();
+    }
   }
 
   function onScrubPointerMove(e: PointerEvent) {
@@ -397,6 +509,7 @@
     window.removeEventListener("keydown", onKeyDown);
     detachDragListeners();
     endScrub();
+    endDurationResize();
   });
 </script>
 
@@ -412,6 +525,24 @@
         · {clipCount} clip{clipCount === 1 ? "" : "s"}
         · top = highest priority
       </span>
+      <label
+        class="duration-field"
+        title="Sequence length (cannot go shorter than last clip end: {formatTimestamp(contentEnd)})"
+      >
+        <span class="muted">Length</span>
+        <input
+          class="compact mono"
+          type="number"
+          min={contentEnd}
+          step="0.1"
+          bind:value={durationInput}
+          onchange={applyDurationInput}
+          onkeydown={onDurationKey}
+          aria-label="Timeline length in seconds"
+        />
+        <span class="mono muted">s</span>
+        <span class="mono duration-label">{formatTimestamp(seqDuration)}</span>
+      </label>
     </div>
     <div class="head-right">
       <label class="zoom">
@@ -566,6 +697,35 @@
           <div class="playhead-hit" aria-hidden="true"></div>
           <div class="playhead-head" aria-hidden="true"></div>
         </div>
+
+        <!-- Sequence end handle — drag to set global timeline length -->
+        <div
+          class="duration-handle"
+          class:active={resizingDuration}
+          style:left="{seqDuration * pxPerSecond}px"
+          style:height="{RULER_H + displayTracks.length * TRACK_H}px"
+          style:width="{DURATION_HANDLE_PX}px"
+          role="slider"
+          tabindex="0"
+          aria-label="Sequence length — drag to adjust"
+          aria-valuemin={contentEnd}
+          aria-valuemax={Math.max(contentEnd + 3600, seqDuration)}
+          aria-valuenow={seqDuration}
+          aria-valuetext="{formatTimestamp(seqDuration)} ({seqDuration.toFixed(2)}s)"
+          title="Sequence length {formatTimestamp(seqDuration)} — drag to extend or shrink (min = last clip)"
+          onpointerdown={startDurationResize}
+          onkeydown={(e) => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+              e.preventDefault();
+              const step = e.shiftKey ? 1 : 0.1;
+              const delta = e.key === "ArrowLeft" ? -step : step;
+              setTimelineDuration(seqDuration + delta);
+            }
+          }}
+        >
+          <div class="duration-handle-bar" aria-hidden="true"></div>
+          <div class="duration-handle-grip" aria-hidden="true"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -642,6 +802,23 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
+  }
+
+  .duration-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: 0.35rem;
+    font-size: 0.85rem;
+  }
+
+  .duration-field input {
+    width: 4.25rem;
+  }
+
+  .duration-label {
+    color: var(--text);
+    min-width: 3.2rem;
   }
 
   .timeline-body {
@@ -844,5 +1021,46 @@
     border-right: 5px solid transparent;
     border-top: 8px solid var(--danger);
     pointer-events: none;
+  }
+
+  .duration-handle {
+    position: absolute;
+    top: 0;
+    z-index: 5;
+    margin-left: -5px;
+    cursor: ew-resize;
+    touch-action: none;
+    outline: none;
+  }
+
+  .duration-handle.active .duration-handle-bar,
+  .duration-handle:hover .duration-handle-bar {
+    background: var(--accent);
+  }
+
+  .duration-handle-bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 4px;
+    width: 2px;
+    background: rgba(91, 140, 255, 0.75);
+    pointer-events: none;
+  }
+
+  .duration-handle-grip {
+    position: absolute;
+    top: 2px;
+    left: 0;
+    width: 10px;
+    height: 14px;
+    border-radius: 2px;
+    background: var(--accent);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    pointer-events: none;
+  }
+
+  .duration-handle:focus-visible .duration-handle-grip {
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
   }
 </style>

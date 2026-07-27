@@ -14,6 +14,7 @@ import {
   createProject,
   defaultTransform,
   projectDuration,
+  setProjectDuration,
 } from "$lib/project";
 import {
   checkDeps,
@@ -407,6 +408,19 @@ export function setCanvasSize(width: number, height: number) {
     canvas: { width: w, height: h },
   });
   app.status = `Canvas ${w}×${h}`;
+}
+
+/** Set sequence length (seconds). Clamped to at least last clip end. */
+export function setTimelineDuration(secs: number) {
+  const p = project();
+  const next = setProjectDuration(p, secs);
+  if (next === p) return;
+  commitProject(next);
+  // Keep playhead inside the sequence
+  if (app.playhead > projectDuration(next)) {
+    app.playhead = projectDuration(next);
+  }
+  app.status = `Timeline ${projectDuration(next).toFixed(2)}s`;
 }
 
 export function setPlayhead(t: number) {
