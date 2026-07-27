@@ -1,8 +1,33 @@
 {
   "name": "slop-video-compositor",
   "version": "0.1.0",
-  "description": "Desktop multi-shot video compositor that assembles clips into one animator-friendly H.264+AAC MP4",
+  "description": "Desktop multi-shot hard-cut video compositor: multi-track timeline, reframe, export one animator-friendly H.264+AAC MP4",
   "type": "module",
+  "author": "Meigo",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meigo/slop-video-compositor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/meigo/slop-video-compositor/issues"
+  },
+  "homepage": "https://github.com/meigo/slop-video-compositor#readme",
+  "keywords": [
+    "tauri",
+    "svelte",
+    "sveltekit",
+    "typescript",
+    "rust",
+    "ffmpeg",
+    "video-editor",
+    "video-compositor",
+    "desktop-app",
+    "macos",
+    "hard-cut",
+    "nle",
+    "animation"
+  ],
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
@@ -12,7 +37,6 @@
     "tauri": "tauri",
     "test": "vitest run"
   },
-  "license": "MIT",
   "dependencies": {
     "@lucide/svelte": "^1.27.0",
     "@tauri-apps/api": "^2",

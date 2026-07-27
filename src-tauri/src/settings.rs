@@ -58,15 +58,32 @@ pub fn default_export_dir() -> String {
         .into()
 }
 
+/// Reject empty paths, NUL bytes, and non-absolute paths (basic command hardening).
+fn validate_user_path(path: &str, kind: &str) -> Result<(), String> {
+    if path.is_empty() {
+        return Err(format!("{kind}: empty path"));
+    }
+    if path.contains('\0') {
+        return Err(format!("{kind}: path contains NUL"));
+    }
+    let p = std::path::Path::new(path);
+    if !p.is_absolute() {
+        return Err(format!("{kind}: path must be absolute"));
+    }
+    Ok(())
+}
+
 /// Read a UTF-8 text file (project JSON, etc.).
 #[tauri::command]
 pub fn read_text_file(path: String) -> Result<String, String> {
+    validate_user_path(&path, "read")?;
     std::fs::read_to_string(&path).map_err(|e| format!("read {path}: {e}"))
 }
 
 /// Write a UTF-8 text file (project JSON, etc.).
 #[tauri::command]
 pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    validate_user_path(&path, "write")?;
     if let Some(parent) = std::path::Path::new(&path).parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent)
@@ -131,5 +148,16 @@ mod tests {
             d.ends_with("Movies/Slop Refs") || d.ends_with("Movies\\Slop Refs"),
             "unexpected default_export_dir: {d}"
         );
+    }
+
+    #[test]
+    fn validate_user_path_rejects_relative_and_nul() {
+        assert!(validate_user_path("relative.json", "read").is_err());
+        assert!(validate_user_path("/tmp/a\0b.json", "read").is_err());
+        assert!(validate_user_path("", "read").is_err());
+        #[cfg(unix)]
+        assert!(validate_user_path("/tmp/project.json", "read").is_ok());
+        #[cfg(windows)]
+        assert!(validate_user_path(r"C:\tmp\project.json", "read").is_ok());
     }
 }

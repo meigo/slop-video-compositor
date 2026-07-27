@@ -2,7 +2,14 @@
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { onDestroy } from "svelte";
   import { findClip } from "$lib/clips";
-  import { clipDuration, cloneProject, projectDuration } from "$lib/project";
+  import {
+    clampSourceSeek,
+    clipTimelineEnd,
+    nextClipAfter,
+    shouldPrefetchNearCut,
+    sourceTimeAt,
+  } from "$lib/previewTime";
+  import { cloneProject, projectDuration } from "$lib/project";
   import { clipAtTime } from "$lib/resolve";
   import { clamp } from "$lib/time";
   import { drawRect } from "$lib/transform";
@@ -11,7 +18,6 @@
     app,
     project,
     replaceClip,
-    selectedClip,
     setPlayhead,
   } from "../../state/appState.svelte";
 
@@ -120,28 +126,6 @@
     } catch {
       return path;
     }
-  }
-
-  function sourceTime(clip: Clip, t: number): number {
-    return clip.sourceIn + (t - clip.timelineStart);
-  }
-
-  function clipEnd(clip: Clip): number {
-    return clip.timelineStart + clipDuration(clip);
-  }
-
-  /** Clip that starts at or after this clip's exclusive timeline end (skipping black). */
-  function nextClipAfter(proj: Project, clip: Clip): Clip | null {
-    let t = clipEnd(clip);
-    const total = projectDuration(proj);
-    // Walk past black gaps a bit so we find the next media cut.
-    for (let i = 0; i < 8 && t < total; i++) {
-      const hit = clipAtTime(proj, t);
-      if (hit) return hit.clip;
-      // Jump to next critical time: sample slightly forward
-      t += 1 / 60;
-    }
-    return null;
   }
 
   function srcDims(clip: Clip, el: HTMLVideoElement | undefined): { w: number; h: number } {
@@ -352,11 +336,7 @@
     const ok = await loadPath(slot, clip.sourcePath);
     if (!ok || !opts.valid()) return false;
 
-    const st = clamp(
-      sourceT,
-      clip.sourceIn,
-      Math.max(clip.sourceIn, clip.sourceOut - CLIP_END_EPS),
-    );
+    const st = clampSourceSeek(clip, sourceT, CLIP_END_EPS);
     await seekSlot(slot, st, true);
     if (!opts.valid() || slot.clipId !== clip.id) return false;
 
@@ -407,7 +387,7 @@
       return;
     }
 
-    const st = sourceTime(hit.clip, app.playhead);
+    const st = sourceTimeAt(hit.clip, app.playhead);
     const ok = await prepareSlot(active, hit.clip, st, {
       play: false,
       valid: () => gen === syncGen,
@@ -487,12 +467,7 @@
     ) {
       playingClipId = clip.id;
       active.clipId = clip.id;
-      const local = app.playhead - clip.timelineStart;
-      const st = clamp(
-        clip.sourceIn + local,
-        clip.sourceIn,
-        Math.max(clip.sourceIn, clip.sourceOut - CLIP_END_EPS),
-      );
+      const st = clampSourceSeek(clip, sourceTimeAt(clip, app.playhead), CLIP_END_EPS);
       await seekSlot(active, st, true);
       if (!app.playing || gen !== syncGen) {
         if (playingClipId === clip.id) playingClipId = null;
@@ -508,12 +483,7 @@
 
     // Cold start on active (first clip / cache miss)
     playingClipId = clip.id;
-    const local = app.playhead - clip.timelineStart;
-    const st = clamp(
-      clip.sourceIn + local,
-      clip.sourceIn,
-      Math.max(clip.sourceIn, clip.sourceOut - CLIP_END_EPS),
-    );
+    const st = clampSourceSeek(clip, sourceTimeAt(clip, app.playhead), CLIP_END_EPS);
     const ok = await prepareSlot(active, clip, st, {
       play: true,
       valid: () => gen === syncGen && app.playing,
@@ -573,7 +543,7 @@
 
     if (hit && active.el) {
       const clip = hit.clip;
-      const end = clipEnd(clip);
+      const end = clipTimelineEnd(clip);
 
       if (playingClipId !== clip.id) {
         const gen = ++syncGen;
@@ -599,7 +569,7 @@
         } else {
           t = clip.timelineStart + Math.max(0, vidT - clip.sourceIn);
           // Prefetch near the cut
-          if (clip.sourceOut - vidT <= PREFETCH_LEAD) {
+          if (shouldPrefetchNearCut(clip.sourceOut, vidT, PREFETCH_LEAD)) {
             schedulePrefetch(clip);
           }
           if (active.el.paused) {
@@ -764,10 +734,11 @@
     scaling = false;
   }
 
-  /** Selected clip, or topmost (hard-cut winner) at the playhead. */
+  /**
+   * Transform gestures target the hard-cut winner at the playhead (what is painted),
+   * not a covered selection on a lower track.
+   */
   function transformTargetClip(): Clip | null {
-    const sel = selectedClip();
-    if (sel) return sel;
     return clipAtTime(project(), app.playhead)?.clip ?? null;
   }
 

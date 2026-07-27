@@ -10,6 +10,9 @@ import {
   deleteClip,
   addClip,
   addTrack,
+  clampClipSourceToMedia,
+  clampProjectSourcesToMedia,
+  overwriteWithClip,
 } from "./clips";
 
 function sampleClip(over: Partial<Clip> = {}): Clip {
@@ -45,6 +48,96 @@ describe("findClip", () => {
   });
 });
 
+describe("overwriteWithClip", () => {
+  it("trims a left neighbor that overlaps the winner", () => {
+    const p = createProject();
+    // A: 0..10 on timeline, B: 5..15 — B wins → A becomes 0..5
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 10 }),
+      sampleClip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 10 }),
+    );
+    const next = overwriteWithClip(p, "b");
+    const a = next.tracks[0].clips.find((c) => c.id === "a")!;
+    const b = next.tracks[0].clips.find((c) => c.id === "b")!;
+    expect(a.sourceOut).toBe(5);
+    expect(a.timelineStart + clipDuration(a)).toBe(5);
+    expect(b.timelineStart).toBe(5);
+    expect(clipDuration(b)).toBe(10);
+  });
+
+  it("trims a right neighbor that overlaps the winner", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 10 }),
+      sampleClip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 10 }),
+    );
+    const next = overwriteWithClip(p, "a");
+    const a = next.tracks[0].clips.find((c) => c.id === "a")!;
+    const b = next.tracks[0].clips.find((c) => c.id === "b")!;
+    expect(a.timelineStart).toBe(0);
+    expect(clipDuration(a)).toBe(10);
+    expect(b.timelineStart).toBe(10);
+    expect(b.sourceIn).toBe(5);
+    expect(b.sourceOut).toBe(10);
+  });
+
+  it("splits a neighbor that fully covers the winner", () => {
+    const p = createProject();
+    // Long A 0..20, short B dropped on top 5..10
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 20 }),
+      sampleClip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 5 }),
+    );
+    const next = overwriteWithClip(p, "b");
+    const clips = next.tracks[0].clips;
+    const b = clips.find((c) => c.id === "b")!;
+    const left = clips.find((c) => c.id === "a")!;
+    const right = clips.find((c) => c.id !== "a" && c.id !== "b")!;
+    expect(clips).toHaveLength(3);
+    expect(left.sourceOut).toBe(5);
+    expect(left.timelineStart + clipDuration(left)).toBe(5);
+    expect(b.timelineStart).toBe(5);
+    expect(clipDuration(b)).toBe(5);
+    expect(right.timelineStart).toBe(10);
+    expect(right.sourceIn).toBe(10);
+    expect(right.sourceOut).toBe(20);
+  });
+
+  it("deletes a neighbor fully covered by the winner", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "big", timelineStart: 0, sourceIn: 0, sourceOut: 20 }),
+      sampleClip({ id: "small", timelineStart: 5, sourceIn: 0, sourceOut: 3 }),
+    );
+    const next = overwriteWithClip(p, "big");
+    expect(next.tracks[0].clips.map((c) => c.id)).toEqual(["big"]);
+  });
+
+  it("does not touch other tracks", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 10 }),
+      sampleClip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 10 }),
+    );
+    p.tracks[1].clips.push(
+      sampleClip({ id: "hi", timelineStart: 0, sourceIn: 0, sourceOut: 20 }),
+    );
+    const next = overwriteWithClip(p, "b");
+    expect(next.tracks[1].clips[0]).toEqual(p.tracks[1].clips[0]);
+    expect(next.tracks[0].clips.find((c) => c.id === "a")!.sourceOut).toBe(5);
+  });
+
+  it("allows abutting clips (no false overlap)", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 5 }),
+      sampleClip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 5 }),
+    );
+    const next = overwriteWithClip(p, "b");
+    expect(next).toBe(p);
+  });
+});
+
 describe("moveClip", () => {
   it("updates timelineStart on same track", () => {
     const p = projectWithClip();
@@ -54,14 +147,35 @@ describe("moveClip", () => {
     expect(p.tracks[0].clips[0].timelineStart).toBe(5);
   });
 
-  it("moves clip to another track", () => {
-    const p = projectWithClip();
+  it("overwrites neighbors when drag creates overlap", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 10 }),
+      sampleClip({ id: "b", timelineStart: 20, sourceIn: 0, sourceOut: 5 }),
+    );
+    // Drag b onto a (starts at 5)
+    const next = moveClip(p, "b", 5);
+    const a = next.tracks[0].clips.find((c) => c.id === "a")!;
+    const b = next.tracks[0].clips.find((c) => c.id === "b")!;
+    expect(b.timelineStart).toBe(5);
+    expect(a.timelineStart + clipDuration(a)).toBe(5);
+    expect(a.sourceOut).toBe(5);
+  });
+
+  it("moves clip to another track and overwrites there", () => {
+    const p = projectWithClip(
+      sampleClip({ id: "c1", timelineStart: 0, sourceIn: 0, sourceOut: 10 }),
+    );
+    p.tracks[1].clips.push(
+      sampleClip({ id: "other", timelineStart: 0, sourceIn: 0, sourceOut: 8 }),
+    );
     const toId = p.tracks[1].id;
-    const next = moveClip(p, "c1", 3, toId);
+    const next = moveClip(p, "c1", 2, toId);
     expect(next.tracks[0].clips).toHaveLength(0);
-    expect(next.tracks[1].clips).toHaveLength(1);
-    expect(next.tracks[1].clips[0].id).toBe("c1");
-    expect(next.tracks[1].clips[0].timelineStart).toBe(3);
+    expect(next.tracks[1].clips.find((c) => c.id === "c1")!.timelineStart).toBe(2);
+    const other = next.tracks[1].clips.find((c) => c.id === "other")!;
+    // other 0..8, c1 2..12 → other trimmed to 0..2
+    expect(other.sourceOut).toBe(2);
   });
 
   it("is no-op for missing clip", () => {
@@ -239,5 +353,39 @@ describe("addTrack", () => {
     const p = createProject();
     const next = addTrack(p);
     expect(next.tracks[2].name).toMatch(/^V\d+$/);
+  });
+});
+
+describe("clampClipSourceToMedia", () => {
+  it("returns same clip when already in range", () => {
+    const clip = sampleClip({ sourceIn: 1, sourceOut: 5 });
+    expect(clampClipSourceToMedia(clip, 10)).toBe(clip);
+  });
+
+  it("clamps out-of-range ends and negative in", () => {
+    const clip = sampleClip({ sourceIn: -1, sourceOut: 20 });
+    const next = clampClipSourceToMedia(clip, 10);
+    expect(next).toEqual({ ...clip, sourceIn: 0, sourceOut: 10 });
+  });
+
+  it("returns null when range is entirely past EOF", () => {
+    const clip = sampleClip({ sourceIn: 12, sourceOut: 15 });
+    expect(clampClipSourceToMedia(clip, 10)).toBeNull();
+  });
+});
+
+describe("clampProjectSourcesToMedia", () => {
+  it("clamps and reports invalid ids", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "ok", sourceIn: 0, sourceOut: 12, sourcePath: "/a.mp4" }),
+      sampleClip({ id: "bad", sourceIn: 20, sourceOut: 25, sourcePath: "/a.mp4" }),
+    );
+    const meta = new Map([["/a.mp4", { duration: 10 }]]);
+    const result = clampProjectSourcesToMedia(p, meta);
+    expect(result.changed).toBe(true);
+    expect(result.invalidIds).toEqual(["bad"]);
+    expect(result.project.tracks[0].clips[0].sourceOut).toBe(10);
+    expect(result.project.tracks[0].clips[1].sourceIn).toBe(20);
   });
 });

@@ -6,7 +6,8 @@ import type { Clip, Project } from "./types";
  * timelineStart <= t < timelineStart + duration).
  *
  * - Higher track index wins across tracks.
- * - Same-track overlap: last clip in `track.clips` that covers `t`.
+ * - Same-track edits use overwrite (no intentional overlap). Fallback if data
+ *   still overlaps (legacy/hand-edited): last covering clip in `track.clips`.
  */
 export function clipAtTime(
   project: Project,

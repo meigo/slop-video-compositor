@@ -127,7 +127,7 @@ fn input_has_audio(s: &str) -> bool {
 
 #[tauri::command]
 pub fn probe_media(path: String) -> Result<MediaMeta, String> {
-    let ffmpeg = which("ffmpeg").ok_or_else(|| "ffmpeg not found on PATH".to_string())?;
+    let ffmpeg = which("ffmpeg").ok_or_else(|| "ffmpeg not found".to_string())?;
 
     // Probe only: no full decode. ffmpeg prints format info on stderr then exits
     // non-zero when no output is specified — that is expected.

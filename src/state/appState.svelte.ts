@@ -1,4 +1,9 @@
-import { addClip, findClip } from "$lib/clips";
+import {
+  addClip,
+  clampProjectSourcesToMedia,
+  findClip,
+  overwriteWithClip,
+} from "$lib/clips";
 import { toExportOpts } from "$lib/exportPayload";
 import {
   canRedo,
@@ -13,11 +18,15 @@ import { newId } from "$lib/id";
 import {
   createProject,
   defaultTransform,
+  evenCanvasDim,
   PROJECT_FPS,
   projectDuration,
+  serializeProject,
   setProjectDuration,
   snapToFrame,
+  withEffectiveDuration,
 } from "$lib/project";
+import { clamp } from "$lib/time";
 import {
   checkDeps,
   defaultExportDir,
@@ -110,11 +119,24 @@ function syncSelection(p: Project) {
   }
 }
 
+/** Fingerprint of last saved / loaded / new project for accurate dirty tracking. */
+let savedFingerprint = serializeProject(initialProject());
+
+function markCleanFromPresent() {
+  savedFingerprint = serializeProject(project());
+  app.dirty = false;
+}
+
+function refreshDirty() {
+  app.dirty = serializeProject(project()) !== savedFingerprint;
+}
+
 /** Apply a project mutation: push history and mark dirty. */
 export function commitProject(next: Project) {
-  app.history = historyPush(app.history, next);
-  app.dirty = true;
-  syncSelection(next);
+  const normalized = withEffectiveDuration(next);
+  app.history = historyPush(app.history, normalized);
+  refreshDirty();
+  syncSelection(normalized);
 }
 
 export function replaceClip(p: Project, clipId: string, clip: Clip): Project {
@@ -130,7 +152,7 @@ export function replaceClip(p: Project, clipId: string, clip: Clip): Project {
 export function undo() {
   if (!canUndo(app.history)) return;
   app.history = historyUndo(app.history);
-  app.dirty = true;
+  refreshDirty();
   app.playing = false;
   syncSelection(app.history.present);
   app.status = "Undid";
@@ -139,7 +161,7 @@ export function undo() {
 export function redo() {
   if (!canRedo(app.history)) return;
   app.history = historyRedo(app.history);
-  app.dirty = true;
+  refreshDirty();
   app.playing = false;
   syncSelection(app.history.present);
   app.status = "Redid";
@@ -159,7 +181,7 @@ export function newProject() {
   app.selectedTrackId = p.tracks[0]?.id ?? "";
   app.metaByPath = new Map();
   app.projectPath = null;
-  app.dirty = false;
+  markCleanFromPresent();
   app.playing = false;
   app.status = "New project";
 }
@@ -175,7 +197,7 @@ export async function openProject() {
     app.selectedClipId = null;
     app.selectedTrackId = result.project.tracks[0]?.id ?? "";
     app.metaByPath = new Map();
-    app.dirty = false;
+    markCleanFromPresent();
     app.playing = false;
     app.lastProjectDir = dirname(result.path);
     app.status = `Opened ${basename(result.path)}`;
@@ -190,7 +212,7 @@ export async function saveProject() {
   try {
     if (app.projectPath) {
       await writeProjectFile(app.projectPath, project());
-      app.dirty = false;
+      markCleanFromPresent();
       app.status = `Saved ${basename(app.projectPath)}`;
       await persistSettings();
       return;
@@ -206,7 +228,7 @@ export async function saveProjectAs() {
     const path = await saveProjectFileAs(project(), app.projectPath ?? app.lastProjectDir);
     if (!path) return;
     app.projectPath = path;
-    app.dirty = false;
+    markCleanFromPresent();
     app.lastProjectDir = dirname(path);
     app.status = `Saved ${basename(path)}`;
     await persistSettings();
@@ -304,7 +326,7 @@ export async function exportVideo() {
     return;
   }
 
-  const p = project();
+  let p = project();
   if (projectDuration(p) <= 0 || !p.tracks.some((t) => t.clips.length > 0)) {
     app.status = "Nothing to export — add clips first";
     return;
@@ -335,6 +357,17 @@ export async function exportVideo() {
     return;
   }
   app.metaByPath = nextMeta;
+
+  // Keep source ranges inside probed media so ffmpeg trim matches the timeline.
+  const clamped = clampProjectSourcesToMedia(p, nextMeta);
+  if (clamped.invalidIds.length > 0) {
+    app.status = `Export blocked: ${clamped.invalidIds.length} clip(s) lie past media end — trim or relink`;
+    return;
+  }
+  if (clamped.changed) {
+    commitProject(clamped.project);
+    p = project();
+  }
 
   let dir = app.lastExportDir;
   if (!dir) {
@@ -393,12 +426,6 @@ export async function exportVideo() {
     }
     app.exporting = false;
   }
-}
-
-/** Snap to even integers ≥ 2 so yuv420p / libx264 never sees odd canvas sizes. */
-function evenCanvasDim(n: number): number {
-  if (!Number.isFinite(n) || n < 2) return 2;
-  return Math.max(2, Math.floor(n / 2) * 2);
 }
 
 export function setCanvasSize(width: number, height: number) {
@@ -473,10 +500,20 @@ export function updateSelectedClipFields(patch: {
   const prev = found.clip;
   let sourceIn = patch.sourceIn ?? prev.sourceIn;
   let sourceOut = patch.sourceOut ?? prev.sourceOut;
-  // When media duration is known, keep sourceOut within the file.
+  let timelineStart = patch.timelineStart ?? prev.timelineStart;
+
+  if (!Number.isFinite(sourceIn)) sourceIn = prev.sourceIn;
+  if (!Number.isFinite(sourceOut)) sourceOut = prev.sourceOut;
+  if (!Number.isFinite(timelineStart)) timelineStart = prev.timelineStart;
+
+  sourceIn = Math.max(0, sourceIn);
+  timelineStart = Math.max(0, timelineStart);
+
+  // When media duration is known, keep the source range inside the file.
   const meta = app.metaByPath.get(prev.sourcePath);
-  if (meta && Number.isFinite(meta.duration)) {
-    sourceOut = Math.min(sourceOut, meta.duration);
+  if (meta && Number.isFinite(meta.duration) && meta.duration > 0) {
+    sourceIn = clamp(sourceIn, 0, meta.duration);
+    sourceOut = clamp(sourceOut, 0, meta.duration);
   }
   if (!(sourceOut > sourceIn)) return;
 
@@ -484,12 +521,13 @@ export function updateSelectedClipFields(patch: {
     ...prev,
     sourceIn,
     sourceOut,
-    timelineStart: patch.timelineStart ?? prev.timelineStart,
+    timelineStart,
     transform: patch.transform
       ? { ...prev.transform, ...patch.transform }
       : prev.transform,
   };
-  commitProject(replaceClip(project(), id, next));
+  // Timing edits can create same-track overlaps — overwrite neighbors (clip wins).
+  commitProject(overwriteWithClip(replaceClip(project(), id, next), id));
 }
 
 export function resetSelectedTransform() {

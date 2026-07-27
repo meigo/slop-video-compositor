@@ -100,6 +100,13 @@ fn run_ffmpeg(ffmpeg: &str, args: &[String]) -> Result<(), String> {
     }
 }
 
+/// Run ffmpeg off the async runtime so long encodes do not stall other invokes.
+async fn run_ffmpeg_async(ffmpeg: String, args: Vec<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || run_ffmpeg(&ffmpeg, &args))
+        .await
+        .map_err(|e| format!("ffmpeg task join: {e}"))?
+}
+
 fn emit_progress(app: &AppHandle, phase: &str, message: impl Into<String>, pct: Option<f64>) {
     let _ = app.emit(
         "export-progress",
@@ -128,7 +135,10 @@ pub async fn export_project(app: AppHandle, opts: ExportOpts) -> Result<ExportRe
         return Err("nothing to export".into());
     }
 
-    let ffmpeg = which("ffmpeg").ok_or_else(|| "ffmpeg not found on PATH".to_string())?;
+    let ffmpeg = which("ffmpeg").ok_or_else(|| "ffmpeg not found".to_string())?;
+    // yuv420p / libx264 need even frame sizes; normalize here in case the client sent odds.
+    let canvas_w = even_dim(opts.canvas_width);
+    let canvas_h = even_dim(opts.canvas_height);
 
     let output_path = PathBuf::from(&opts.output_path);
     if let Some(parent) = output_path.parent() {
@@ -157,17 +167,14 @@ pub async fn export_project(app: AppHandle, opts: ExportOpts) -> Result<ExportRe
 
         let args = match seg {
             ExportSegment::Clip { .. } => {
-                clip_segment_args(seg, opts.canvas_width, opts.canvas_height, &seg_path_str)
+                clip_segment_args(seg, canvas_w, canvas_h, &seg_path_str)
             }
-            ExportSegment::Black { duration } => black_segment_args(
-                *duration,
-                opts.canvas_width,
-                opts.canvas_height,
-                &seg_path_str,
-            ),
+            ExportSegment::Black { duration } => {
+                black_segment_args(*duration, canvas_w, canvas_h, &seg_path_str)
+            }
         };
 
-        run_ffmpeg(&ffmpeg, &args)?;
+        run_ffmpeg_async(ffmpeg.clone(), args).await?;
         segment_paths.push(seg_path_str);
     }
 
@@ -183,6 +190,12 @@ pub async fn export_project(app: AppHandle, opts: ExportOpts) -> Result<ExportRe
     fs::write(&list_path, list_body).map_err(|e| format!("write concat list: {e}"))?;
 
     let list_str = list_path.to_string_lossy().into_owned();
+    // Concat into temp first, then remux with +faststart into the user path.
+    let concat_tmp = temp
+        .path()
+        .join("concat-out.mp4")
+        .to_string_lossy()
+        .into_owned();
     let out_str = opts.output_path.clone();
 
     let copy_args = vec![
@@ -195,10 +208,10 @@ pub async fn export_project(app: AppHandle, opts: ExportOpts) -> Result<ExportRe
         list_str.clone(),
         "-c".into(),
         "copy".into(),
-        out_str.clone(),
+        concat_tmp.clone(),
     ];
 
-    if run_ffmpeg(&ffmpeg, &copy_args).is_err() {
+    if run_ffmpeg_async(ffmpeg.clone(), copy_args).await.is_err() {
         let reencode_args = vec![
             "-y".into(),
             "-f".into(),
@@ -213,12 +226,29 @@ pub async fn export_project(app: AppHandle, opts: ExportOpts) -> Result<ExportRe
             "yuv420p".into(),
             "-c:a".into(),
             "aac".into(),
-            "-movflags".into(),
-            "+faststart".into(),
-            out_str,
+            concat_tmp.clone(),
         ];
-        run_ffmpeg(&ffmpeg, &reencode_args)?;
+        run_ffmpeg_async(ffmpeg.clone(), reencode_args).await?;
     }
+
+    emit_progress(
+        &app,
+        "faststart",
+        "Writing browser-friendly MP4",
+        Some((n as f64 + 0.5) / (n as f64 + 1.0)),
+    );
+
+    let faststart_args = vec![
+        "-y".into(),
+        "-i".into(),
+        concat_tmp,
+        "-c".into(),
+        "copy".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        out_str,
+    ];
+    run_ffmpeg_async(ffmpeg, faststart_args).await?;
 
     // Drop temp before success path (explicit; Drop also cleans up on Err early return).
     drop(temp);
@@ -272,7 +302,10 @@ fn fmt_f(v: f64) -> String {
 
 /// Build ffmpeg argv (without binary) for one clip segment → `out` (re-encode).
 ///
-/// Expects `ExportSegment::Clip`. Panics if given `Black`.
+/// Uses input `-ss` (before `-i`) for fast keyframe seek on long sources, then
+/// filter `trim`/`atrim` from 0 for duration. Expects `ExportSegment::Clip`.
+///
+/// Panics if given `Black`.
 pub fn clip_segment_args(
     seg: &ExportSegment,
     canvas_w: u32,
@@ -299,8 +332,9 @@ pub fn clip_segment_args(
     let dur = fmt_f(*duration);
     let can = format!("{canvas_w}x{canvas_h}");
 
+    // After input -ss, media timestamps are near 0 — trim from start of that window.
     let video = format!(
-        "[0:v]trim=start={start}:duration={dur},setpts=PTS-STARTPTS,scale={}:{},setsar=1[v];\
+        "[0:v]trim=start=0:duration={dur},setpts=PTS-STARTPTS,scale={}:{},setsar=1[v];\
 color=c=black:s={can}:d={dur}:r=30[bg];\
 [bg][v]overlay={}:{}:shortest=1,format=yuv420p[vout]",
         px.w, px.h, px.x, px.y
@@ -310,7 +344,7 @@ color=c=black:s={can}:d={dur}:r=30[bg];\
         // Force stereo so concat with anullsrc stereo black segments never fails
         // on mono (or other non-stereo) source audio.
         format!(
-            "[0:a]atrim=start={start}:duration={dur},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
+            "[0:a]atrim=start=0:duration={dur},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
         )
     } else {
         format!("anullsrc=r=48000:cl=stereo,atrim=duration={dur}[a]")
@@ -318,8 +352,13 @@ color=c=black:s={can}:d={dur}:r=30[bg];\
 
     let filter = format!("{video};{audio}");
 
-    vec![
-        "-y".into(),
+    let mut args = vec!["-y".into()];
+    // Input seek for long camera files (keyframe-approx; filter trim caps duration).
+    if *source_start > 0.0 {
+        args.push("-ss".into());
+        args.push(start);
+    }
+    args.extend([
         "-i".into(),
         source_path.clone(),
         "-filter_complex".into(),
@@ -339,7 +378,8 @@ color=c=black:s={can}:d={dur}:r=30[bg];\
         "-t".into(),
         dur,
         out.into(),
-    ]
+    ]);
+    args
 }
 
 /// Black + silence segment args (without binary) → `out`.
@@ -373,12 +413,20 @@ pub fn black_segment_args(duration: f64, canvas_w: u32, canvas_h: u32, out: &str
     ]
 }
 
-/// Concat demuxer file body (`file 'path'` lines). Escapes single quotes in paths.
+/// Snap canvas dim to even ≥ 2 (yuv420p / libx264).
+fn even_dim(n: u32) -> u32 {
+    n.max(2) & !1
+}
+
+/// Concat demuxer file body (`file 'path'` lines).
+/// Normalizes `\` → `/` (Windows paths; demuxer treats `\` as escape) and escapes `'`.
 pub fn concat_list_body(segment_paths: &[String]) -> String {
     let mut body = String::new();
     for p in segment_paths {
+        let normalized = p.replace('\\', "/");
+        let escaped = normalized.replace('\'', "'\\''");
         body.push_str("file '");
-        body.push_str(&p.replace('\'', "'\\''"));
+        body.push_str(&escaped);
         body.push_str("'\n");
     }
     body
@@ -427,7 +475,12 @@ mod tests {
             .map(|i| &args[i + 1])
             .expect("filter_complex");
 
-        assert!(fc.contains("trim=start=1.5:duration=2"), "fc={fc}");
+        // Input -ss before -i; filter trims from 0 for duration.
+        let ss_idx = args.iter().position(|a| a == "-ss").expect("-ss");
+        assert_eq!(args[ss_idx + 1], "1.5");
+        let i_idx = args.iter().position(|a| a == "-i").unwrap();
+        assert!(ss_idx < i_idx, "expected -ss before -i");
+        assert!(fc.contains("trim=start=0:duration=2"), "fc={fc}");
         assert!(fc.contains("scale=100:100"), "fc={fc}");
         assert!(fc.contains("setsar=1"), "fc={fc}");
         assert!(fc.contains("color=c=black:s=200x100:d=2:r=30"), "fc={fc}");
@@ -435,7 +488,7 @@ mod tests {
         assert!(fc.contains("format=yuv420p"), "fc={fc}");
         assert!(
             fc.contains(
-                "[0:a]atrim=start=1.5:duration=2,asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
+                "[0:a]atrim=start=0:duration=2,asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
             ),
             "fc={fc}"
         );
@@ -443,6 +496,20 @@ mod tests {
         // -t duration
         let t_idx = args.iter().position(|a| a == "-t").unwrap();
         assert_eq!(args[t_idx + 1], "2");
+    }
+
+    #[test]
+    fn clip_args_omit_ss_when_source_start_zero() {
+        let mut seg = sample_clip(true);
+        if let ExportSegment::Clip {
+            ref mut source_start,
+            ..
+        } = seg
+        {
+            *source_start = 0.0;
+        }
+        let args = clip_segment_args(&seg, 200, 100, "/tmp/seg0.mp4");
+        assert!(!args.iter().any(|a| a == "-ss"));
     }
 
     #[test]
@@ -520,6 +587,26 @@ mod tests {
             concat_list_body(&paths),
             "file '/tmp/o'\\''brien.mp4'\n"
         );
+    }
+
+    #[test]
+    fn concat_list_body_normalizes_windows_backslashes() {
+        let paths = vec![r"C:\Users\me\AppData\Local\Temp\slop-vc-1\seg0000.mp4".into()];
+        assert_eq!(
+            concat_list_body(&paths),
+            "file 'C:/Users/me/AppData/Local/Temp/slop-vc-1/seg0000.mp4'\n"
+        );
+    }
+
+    #[test]
+    fn even_dim_forces_even_min_two() {
+        assert_eq!(even_dim(0), 2);
+        assert_eq!(even_dim(1), 2);
+        assert_eq!(even_dim(2), 2);
+        assert_eq!(even_dim(1920), 1920);
+        assert_eq!(even_dim(1921), 1920);
+        assert_eq!(even_dim(1080), 1080);
+        assert_eq!(even_dim(1081), 1080);
     }
 
     #[test]

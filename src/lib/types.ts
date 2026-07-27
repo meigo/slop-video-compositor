@@ -17,7 +17,8 @@ export type Project = {
   canvas: { width: number; height: number };
   /**
    * Sequence length in seconds (user-editable).
-   * Effective length is max(duration, last clip end) so clips are never cropped by the handle.
+   * Effective length is always max(duration, last clip end) so clips are never cropped by the handle.
+   * `serializeProject` / save paths write the effective value so consumers can trust this field.
    */
   duration: number;
   tracks: Track[];

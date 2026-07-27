@@ -17,6 +17,12 @@ export function snapToFrame(secs: number, fps = PROJECT_FPS): number {
   return Math.round(secs * fps) / fps;
 }
 
+/** Snap canvas dim to even integers ≥ 2 (yuv420p / libx264). */
+export function evenCanvasDim(n: number): number {
+  if (!Number.isFinite(n) || n < 2) return 2;
+  return Math.max(2, Math.floor(n / 2) * 2);
+}
+
 export function defaultTransform(): ClipTransform {
   return { scale: 1, x: 0, y: 0 };
 }
@@ -166,10 +172,12 @@ export function parseProject(json: unknown): Project {
     throw new Error("project.tracks: expected array");
   }
   const tracks = p.tracks.map((track, i) => parseTrack(track, `project.tracks[${i}]`));
+  const width = evenCanvasDim(canvas.width);
+  const height = evenCanvasDim(canvas.height);
   const content = contentDuration({
     version: 1,
     name: p.name,
-    canvas: { width: canvas.width, height: canvas.height },
+    canvas: { width, height },
     duration: 0,
     tracks,
   });
@@ -181,12 +189,25 @@ export function parseProject(json: unknown): Project {
   return {
     version: 1,
     name: p.name,
-    canvas: { width: canvas.width, height: canvas.height },
+    canvas: { width, height },
     duration,
     tracks,
   };
 }
 
+/**
+ * Serialize project JSON for disk / handoff.
+ * Writes effective duration (`max(stored, content)`) so external readers
+ * do not under-report length when clips extend past the stored field.
+ */
 export function serializeProject(p: Project): string {
-  return JSON.stringify(p, null, 2);
+  const duration = projectDuration(p);
+  return JSON.stringify({ ...p, duration }, null, 2);
+}
+
+/** Normalize stored duration up to content so in-memory and on-disk agree. */
+export function withEffectiveDuration(p: Project): Project {
+  const duration = projectDuration(p);
+  if (p.duration === duration) return p;
+  return { ...p, duration };
 }

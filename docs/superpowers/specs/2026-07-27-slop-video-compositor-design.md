@@ -291,17 +291,17 @@ Segment files + concat is preferred over one giant filter graph for v1 (easier d
 
 ### Transform → geometry
 
-Contain-fit base when `scale = 1`, `x = y = 0`:
+Contain-fit, then uniform **scale about the framed center** (pan is center offset):
 
 ```
 fitScale = min(canvasW / srcW, canvasH / srcH)
 drawW = srcW * fitScale * transform.scale
 drawH = srcH * fitScale * transform.scale
-drawX = (canvasW - srcW * fitScale) / 2 + transform.x
-drawY = (canvasH - srcH * fitScale) / 2 + transform.y
+drawX = (canvasW - drawW) / 2 + transform.x
+drawY = (canvasH - drawH) / 2 + transform.y
 ```
 
-Scale source to `drawW×drawH`, overlay on black `canvasW×canvasH` at `(drawX, drawY)`; clip outside canvas.
+When `scale = 1`, this matches classic contain letterboxing. Scale source to `drawW×drawH`, overlay on black `canvasW×canvasH` at `(drawX, drawY)`; clip outside canvas.
 
 ### Black / silent segments
 

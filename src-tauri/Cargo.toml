@@ -1,9 +1,13 @@
 [package]
 name = "slop-video-compositor"
 version = "0.1.0"
-description = "Desktop multi-shot video compositor that assembles clips into one animator-friendly H.264+AAC MP4"
+description = "Desktop multi-shot hard-cut video compositor: multi-track timeline, reframe, export one animator-friendly H.264+AAC MP4"
 authors = ["Meigo"]
 license = "MIT"
+repository = "https://github.com/meigo/slop-video-compositor"
+homepage = "https://github.com/meigo/slop-video-compositor"
+keywords = ["tauri", "video", "compositor", "ffmpeg", "nle"]
+categories = ["multimedia"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

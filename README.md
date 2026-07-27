@@ -1,17 +1,24 @@
 # Slop Video Compositor
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub](https://img.shields.io/badge/github-meigo%2Fslop--video--compositor-181717?logo=github)](https://github.com/meigo/slop-video-compositor)
 
-Desktop multi-shot video compositor: load local clips onto tracks, trim/cut/reorder, reframe on a fixed canvas, export one animator-friendly **H.264 + AAC MP4**.
+Desktop multi-shot **hard-cut** video compositor: load local clips onto tracks, trim/cut/reorder, reframe on a fixed canvas, export one animator-friendly **H.264 + AAC MP4**.
 
-Sits in the Slop pipeline between **[slop-video-downloader](../slop-video-downloader)** (clip export) and **[slop-animator](../slop-animator)** (video reference layer): download or gather clips → compose here → open the MP4 as a video ref in the animator.
+Part of the Slop pipeline between **[slop-video-downloader](https://github.com/meigo/slop-video-downloader)** (clip export) and **[slop-animator](https://github.com/meigo/slop-animator)** (video reference layer): download or gather clips → compose here → open the MP4 as a video ref in the animator.
 
 **Stack:** Tauri 2 + SvelteKit + TypeScript, with **ffmpeg** as an external tool on your `PATH` (not bundled).
+
+| | |
+|--|--|
+| **License** | MIT |
+| **Platform** | macOS-first (Tauri desktop) |
+| **Export** | H.264 + AAC MP4 @ 30 fps, canvas size |
 
 ## Features
 
 - Multi-track timeline: import, move, trim in/out, split at playhead, delete (no ripple)
-- Hard-cut compositing: higher track wins on overlap; gaps render black (silent audio)
+- Same-track **overwrite** on move/trim/import (no stacked clips without a fade); higher track wins across tracks; gaps render black
 - Per-clip scale + pan on a user canvas (default 1920×1080)
 - Live preview with transport (play/pause/stop) and transform gizmo
 - Project save/open as JSON with **absolute** source paths
