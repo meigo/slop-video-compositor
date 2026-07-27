@@ -9,15 +9,15 @@
   import type { Clip, ClipTransform, Project } from "$lib/types";
   import {
     app,
-    commitProject,
     project,
     replaceClip,
     selectedClip,
     setPlayhead,
   } from "../../state/appState.svelte";
 
-  const SCALE_MIN = 0.05;
-  const SCALE_MAX = 8;
+  /** Viewport zoom limits (wheel / trackpad). */
+  const VIEW_ZOOM_MIN = 0.25;
+  const VIEW_ZOOM_MAX = 8;
   /** Near end of trimmed source — treat as clip finished. */
   const CLIP_END_EPS = 1 / 30;
   /** Start warming the next clip this many seconds before the cut. */
@@ -52,7 +52,7 @@
   /** Hold last painted frame across cuts instead of flashing black. */
   let holdFrame = false;
 
-  // Transform pan drag (single undo entry on pointerup)
+  // Clip transform pan drag (single undo entry on pointerup)
   let dragClipId: string | null = null;
   let dragBefore: Project | null = null;
   let dragStartX = 0;
@@ -63,10 +63,28 @@
   let dragDidMove = false;
   let dragging = $state(false);
 
+  // Viewport camera (UI only — not project data)
+  let viewportEl: HTMLDivElement | undefined = $state();
+  let viewZoom = $state(1);
+  let viewPanX = $state(0);
+  let viewPanY = $state(0);
+  let viewFitW = $state(640);
+  let viewFitH = $state(360);
+  let panningView = $state(false);
+  let viewPanPointerId: number | null = null;
+  let viewPanOriginX = 0;
+  let viewPanOriginY = 0;
+  let viewPanStartX = 0;
+  let viewPanStartY = 0;
+
   const p = $derived(project());
   const canvasW = $derived(Math.max(1, Math.round(p.canvas.width)));
   const canvasH = $derived(Math.max(1, Math.round(p.canvas.height)));
   const canTransform = $derived(!!selectedClip());
+  const stageStyle = $derived(
+    `width:${viewFitW}px;height:${viewFitH}px;` +
+      `transform:translate(calc(-50% + ${viewPanX}px),calc(-50% + ${viewPanY}px)) scale(${viewZoom});`,
+  );
 
   function activeSlot(): Slot {
     return slots[activeIdx]!;
@@ -594,6 +612,38 @@
     paint();
   });
 
+  /** Contain-fit project canvas into the viewport chrome (zoom=1 size). */
+  function updateViewFit() {
+    if (!viewportEl) return;
+    const vw = Math.max(1, viewportEl.clientWidth);
+    const vh = Math.max(1, viewportEl.clientHeight);
+    const s = Math.min(vw / canvasW, vh / canvasH);
+    viewFitW = Math.max(1, Math.floor(canvasW * s));
+    viewFitH = Math.max(1, Math.floor(canvasH * s));
+  }
+
+  $effect(() => {
+    void canvasW;
+    void canvasH;
+    void viewportEl;
+    updateViewFit();
+  });
+
+  $effect(() => {
+    if (!viewportEl || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => updateViewFit());
+    ro.observe(viewportEl);
+    return () => ro.disconnect();
+  });
+
+  function resetViewport() {
+    viewZoom = 1;
+    viewPanX = 0;
+    viewPanY = 0;
+    app.status = "Viewport fit";
+  }
+
+  /** Client px → project canvas px (accounts for viewport zoom + fit). */
   function canvasScale(): { sx: number; sy: number } {
     if (!canvasEl) return { sx: 1, sy: 1 };
     const rect = canvasEl.getBoundingClientRect();
@@ -609,6 +659,12 @@
     window.removeEventListener("pointercancel", onWindowPointerCancel);
   }
 
+  function detachViewPanListeners() {
+    window.removeEventListener("pointermove", onViewPanMove);
+    window.removeEventListener("pointerup", onViewPanUp);
+    window.removeEventListener("pointercancel", onViewPanUp);
+  }
+
   function clearDrag() {
     dragClipId = null;
     dragBefore = null;
@@ -617,12 +673,58 @@
     dragging = false;
   }
 
+  function startViewPan(e: PointerEvent) {
+    e.preventDefault();
+    if (panningView) detachViewPanListeners();
+    panningView = true;
+    viewPanPointerId = e.pointerId;
+    viewPanOriginX = e.clientX;
+    viewPanOriginY = e.clientY;
+    viewPanStartX = viewPanX;
+    viewPanStartY = viewPanY;
+    window.addEventListener("pointermove", onViewPanMove);
+    window.addEventListener("pointerup", onViewPanUp);
+    window.addEventListener("pointercancel", onViewPanUp);
+  }
+
+  function onViewPanMove(e: PointerEvent) {
+    if (!panningView) return;
+    if (viewPanPointerId !== null && e.pointerId !== viewPanPointerId) return;
+    viewPanX = viewPanStartX + (e.clientX - viewPanOriginX);
+    viewPanY = viewPanStartY + (e.clientY - viewPanOriginY);
+  }
+
+  function onViewPanUp(e: PointerEvent) {
+    if (viewPanPointerId !== null && e.pointerId !== viewPanPointerId) return;
+    panningView = false;
+    viewPanPointerId = null;
+    detachViewPanListeners();
+  }
+
   function onPointerDown(e: PointerEvent) {
+    // Middle mouse, or Alt/Option+left: pan the viewport
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      if (dragClipId) {
+        detachDragListeners();
+        clearDrag();
+      }
+      startViewPan(e);
+      return;
+    }
     if (e.button !== 0) return;
+
     const clip = selectedClip();
-    if (!clip) return;
+    if (!clip) {
+      // Empty selection: left-drag pans the view
+      startViewPan(e);
+      return;
+    }
 
     e.preventDefault();
+    if (panningView) {
+      detachViewPanListeners();
+      panningView = false;
+    }
     if (dragClipId) {
       detachDragListeners();
       clearDrag();
@@ -702,43 +804,89 @@
     paint();
   }
 
+  /**
+   * Wheel / trackpad: zoom the viewport (not clip scale).
+   * Zoom toward cursor. Double-click the viewport resets fit.
+   */
   function onWheel(e: WheelEvent) {
-    const clip = selectedClip();
-    if (!clip) return;
     e.preventDefault();
+    if (!viewportEl) return;
 
-    const factor = e.deltaY > 0 ? 0.95 : 1.05;
-    const scale = clamp(clip.transform.scale * factor, SCALE_MIN, SCALE_MAX);
-    if (scale === clip.transform.scale) return;
+    // Pinch-zoom on trackpads often sets ctrlKey; treat as zoom either way.
+    // Shift+wheel pans horizontally/vertically without zooming.
+    if (e.shiftKey) {
+      viewPanX -= e.deltaX || e.deltaY;
+      viewPanY -= e.deltaY && e.deltaX ? e.deltaY : e.deltaX ? 0 : e.deltaY;
+      return;
+    }
 
-    commitProject(
-      applyClipTransform(project(), clip.id, {
-        ...clip.transform,
-        scale,
-      }),
-    );
-    app.status = "Scaled transform";
-    paint();
+    const rect = viewportEl.getBoundingClientRect();
+    // Cursor relative to viewport center (stage is centered)
+    const mx = e.clientX - rect.left - rect.width / 2;
+    const my = e.clientY - rect.top - rect.height / 2;
+
+    // Smooth trackpad deltas; clamp step for mouse wheels
+    const raw = e.deltaY;
+    const factor =
+      Math.abs(raw) > 40
+        ? raw > 0
+          ? 0.9
+          : 1.11
+        : Math.exp(-raw * 0.002);
+
+    const oldZoom = viewZoom;
+    const newZoom = clamp(oldZoom * factor, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX);
+    if (newZoom === oldZoom) return;
+
+    // Keep the point under the cursor fixed in world space
+    const lx = (mx - viewPanX) / oldZoom;
+    const ly = (my - viewPanY) / oldZoom;
+    viewZoom = newZoom;
+    viewPanX = mx - lx * newZoom;
+    viewPanY = my - ly * newZoom;
+  }
+
+  function onViewportDblClick() {
+    resetViewport();
   }
 
   onDestroy(() => {
     stopRaf();
     detachDragListeners();
+    detachViewPanListeners();
     videoA?.pause();
     videoB?.pause();
   });
 </script>
 
 <div class="preview-frame" aria-label="Preview">
-  <canvas
-    bind:this={canvasEl}
-    width={canvasW}
-    height={canvasH}
-    class:interactive={canTransform}
-    class:dragging
-    onpointerdown={onPointerDown}
+  <div
+    class="viewport"
+    class:panning={panningView}
+    bind:this={viewportEl}
     onwheel={onWheel}
-  ></canvas>
+    ondblclick={onViewportDblClick}
+    role="presentation"
+  >
+    <div class="stage" style={stageStyle}>
+      <canvas
+        bind:this={canvasEl}
+        width={canvasW}
+        height={canvasH}
+        class:interactive={canTransform}
+        class:dragging
+        onpointerdown={onPointerDown}
+      ></canvas>
+    </div>
+  </div>
+  {#if viewZoom !== 1 || viewPanX !== 0 || viewPanY !== 0}
+    <div class="view-hud" aria-hidden="true">
+      <span class="mono">{Math.round(viewZoom * 100)}%</span>
+      <button type="button" class="ghost fit-btn" onclick={resetViewport} title="Fit viewport (double-click)">
+        Fit
+      </button>
+    </div>
+  {/if}
   <!-- Dual decoders: active free-runs, standby prefetches the next cut -->
   <!-- svelte-ignore a11y_media_has_caption -->
   <video bind:this={videoA} class="decoder" playsinline preload="auto"></video>
@@ -752,8 +900,7 @@
     min-height: 200px;
     min-width: 0;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -761,12 +908,33 @@
     position: relative;
   }
 
+  .viewport {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    position: relative;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+    background: #0a0a0c;
+  }
+
+  .viewport.panning {
+    cursor: grabbing;
+  }
+
+  .stage {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform-origin: center center;
+    will-change: transform;
+  }
+
   canvas {
     display: block;
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
+    width: 100%;
+    height: 100%;
     background: #000;
     cursor: default;
     touch-action: none;
@@ -778,6 +946,34 @@
 
   canvas.dragging {
     cursor: grabbing;
+  }
+
+  .view-hud {
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0.45rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.35rem;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid var(--border);
+    font-size: 0.75rem;
+    color: var(--muted);
+    z-index: 2;
+  }
+
+  .view-hud .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    min-width: 2.5rem;
+    text-align: right;
+    color: var(--text);
+  }
+
+  .fit-btn {
+    padding: 0.15em 0.45em;
+    font-size: 0.75rem;
   }
 
   .decoder {
