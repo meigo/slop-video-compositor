@@ -2,7 +2,7 @@
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { onDestroy } from "svelte";
   import { findClip } from "$lib/clips";
-  import { cloneProject, projectDuration } from "$lib/project";
+  import { clipDuration, cloneProject, projectDuration } from "$lib/project";
   import { clipAtTime } from "$lib/resolve";
   import { clamp } from "$lib/time";
   import { drawRect } from "$lib/transform";
@@ -18,12 +18,15 @@
 
   const SCALE_MIN = 0.05;
   const SCALE_MAX = 8;
-  const DRIFT_SEEK = 0.3;
+  /** Near end of trimmed source — treat as clip finished (1 frame @ 30fps). */
+  const CLIP_END_EPS = 1 / 30;
 
   let canvasEl: HTMLCanvasElement | undefined = $state();
   let videoEl: HTMLVideoElement | undefined = $state();
 
   let loadedPath: string | null = null;
+  /** Clip id currently free-running under play() — re-seek only when this changes. */
+  let playingClipId: string | null = null;
   let syncGen = 0;
   let rafId = 0;
   let lastRafMs = 0;
@@ -173,6 +176,7 @@
   }
 
   async function syncPaused() {
+    playingClipId = null;
     const gen = ++syncGen;
     const hit = clipAtTime(project(), app.playhead);
 
@@ -183,6 +187,7 @@
 
     if (!hit) {
       videoEl.pause();
+      applyAudioState();
       if (gen === syncGen) paint();
       return;
     }
@@ -199,53 +204,43 @@
     paint();
   }
 
-  function syncPlaying() {
-    const hit = clipAtTime(project(), app.playhead);
-    if (!videoEl) {
-      paint();
+  /**
+   * Start free-running a clip under play(). Seeks once to the playhead-mapped
+   * source time, then lets the element run — no per-frame drift correction.
+   */
+  async function startClipPlayback(clip: Clip, gen: number): Promise<void> {
+    if (!videoEl || !app.playing) return;
+
+    playingClipId = clip.id;
+    const ok = await ensureVideo(clip.sourcePath, gen);
+    if (!ok || !app.playing || gen !== syncGen) {
+      if (playingClipId === clip.id) playingClipId = null;
       return;
     }
 
-    if (!hit) {
+    const dur = clipDuration(clip);
+    const local = app.playhead - clip.timelineStart;
+    const st = clamp(
+      clip.sourceIn + local,
+      clip.sourceIn,
+      Math.max(clip.sourceIn, clip.sourceOut - CLIP_END_EPS),
+    );
+
+    await seekVideo(st, gen, true);
+    if (!app.playing || !videoEl || gen !== syncGen) {
+      if (playingClipId === clip.id) playingClipId = null;
+      return;
+    }
+
+    // If we're already at/past the out point, don't play — tick will advance.
+    if (dur <= 0 || st >= clip.sourceOut - CLIP_END_EPS) {
       videoEl.pause();
-      applyAudioState();
-      paint();
+      playingClipId = null;
       return;
     }
 
-    const path = hit.clip.sourcePath;
-    const st = sourceTime(hit.clip, app.playhead);
     applyAudioState();
-
-    if (loadedPath !== path) {
-      const gen = ++syncGen;
-      void (async () => {
-        const ok = await ensureVideo(path, gen);
-        if (!ok || !app.playing || gen !== syncGen) return;
-        await seekVideo(st, gen, true);
-        if (!app.playing || !videoEl || gen !== syncGen) return;
-        applyAudioState();
-        void videoEl.play().catch(() => {});
-        paint();
-      })();
-      paint();
-      return;
-    }
-
-    if (Math.abs(videoEl.currentTime - st) > DRIFT_SEEK) {
-      const gen = syncGen;
-      void seekVideo(st, gen, true).then(() => {
-        if (app.playing && videoEl?.paused) {
-          applyAudioState();
-          void videoEl.play().catch(() => {});
-        }
-      });
-    } else if (videoEl.paused) {
-      applyAudioState();
-      void videoEl.play().catch(() => {});
-    }
-
-    paint();
+    void videoEl.play().catch(() => {});
   }
 
   function stopRaf() {
@@ -256,6 +251,24 @@
     lastRafMs = 0;
   }
 
+  function stopPlayback(at: number, status: string) {
+    setPlayhead(at);
+    app.playing = false;
+    app.status = status;
+    playingClipId = null;
+    videoEl?.pause();
+    applyAudioState();
+    paint();
+    stopRaf();
+  }
+
+  /**
+   * Playback clock:
+   * - On a clip: free-run `<video>` and drive the playhead from `currentTime`
+   *   (no wall-clock + drift-seek — that caused ~1s snap-back jitter).
+   * - In a black gap: advance playhead with wall-clock.
+   * - Clip change: one seek + play(), then free-run again.
+   */
   function tick(now: number) {
     if (!app.playing) {
       rafId = 0;
@@ -264,33 +277,67 @@
     }
 
     if (lastRafMs === 0) lastRafMs = now;
-    const dt = Math.min(0.25, (now - lastRafMs) / 1000);
+    const wallDt = Math.min(0.25, (now - lastRafMs) / 1000);
     lastRafMs = now;
 
-    const dur = projectDuration(project());
-    if (!(dur > 0)) {
-      app.playing = false;
-      app.status = "Paused";
-      videoEl?.pause();
-      paint();
-      rafId = 0;
+    const proj = project();
+    const totalDur = projectDuration(proj);
+    if (!(totalDur > 0)) {
+      stopPlayback(0, "Paused");
       return;
     }
 
-    const t = app.playhead + dt;
-    if (t >= dur) {
-      setPlayhead(dur);
-      app.playing = false;
-      app.status = "Paused";
+    let t = app.playhead;
+    const hit = clipAtTime(proj, t);
+
+    if (hit && videoEl) {
+      const clip = hit.clip;
+      const clipEnd = clip.timelineStart + clipDuration(clip);
+
+      // New clip (or first frame) → one-time lock, then free-run
+      if (playingClipId !== clip.id || loadedPath !== clip.sourcePath) {
+        const gen = ++syncGen;
+        void startClipPlayback(clip, gen);
+        paint();
+      } else if (videoEl.seeking) {
+        // Wait for seek to land; don't wall-clock-fight the element
+        paint();
+      } else if (videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        const vidT = videoEl.currentTime;
+        const pastOut = vidT >= clip.sourceOut - CLIP_END_EPS;
+        const ended = videoEl.ended;
+
+        if (pastOut || ended) {
+          // Trim out or media EOF → leave this clip
+          t = clipEnd;
+          videoEl.pause();
+          playingClipId = null;
+        } else {
+          // Free-run: timeline follows the decoder clock
+          t = clip.timelineStart + Math.max(0, vidT - clip.sourceIn);
+          if (videoEl.paused) {
+            applyAudioState();
+            void videoEl.play().catch(() => {});
+          }
+        }
+        paint();
+      } else {
+        paint();
+      }
+    } else {
+      // Black gap (or no decoder yet): wall-clock advance
+      playingClipId = null;
       videoEl?.pause();
+      t = t + wallDt;
       paint();
-      rafId = 0;
-      lastRafMs = 0;
+    }
+
+    if (t >= totalDur - 1e-6) {
+      stopPlayback(totalDur, "Paused");
       return;
     }
 
-    setPlayhead(t);
-    syncPlaying();
+    if (t !== app.playhead) setPlayhead(t);
     rafId = requestAnimationFrame(tick);
   }
 
@@ -303,12 +350,16 @@
   // Playback loop only
   $effect(() => {
     if (app.playing) {
+      playingClipId = null; // force re-lock on play start
       applyAudioState();
       startRaf();
-      syncPlaying();
-      return () => stopRaf();
+      return () => {
+        stopRaf();
+        playingClipId = null;
+      };
     }
     stopRaf();
+    playingClipId = null;
     videoEl?.pause();
     applyAudioState();
   });
