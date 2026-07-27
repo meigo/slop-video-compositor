@@ -5,6 +5,7 @@
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Volume2 from "@lucide/svelte/icons/volume-2";
   import VolumeX from "@lucide/svelte/icons/volume-x";
+  import { clipColorSolid } from "$lib/clipColor";
   import { formatTimestamp } from "$lib/time";
   import type { Clip, SourceMeta } from "$lib/types";
 
@@ -40,6 +41,12 @@
     <div class="field path">
       <span class="label">Source</span>
       <span class="value mono source-row" title={clip.sourcePath}>
+        <span
+          class="color-swatch"
+          style:background={clipColorSolid(clip.sourcePath)}
+          title="Timeline color for this source file"
+          aria-hidden="true"
+        ></span>
         <Film size={14} strokeWidth={2} class="source-icon" aria-hidden="true" />
         <span>{basename(clip.sourcePath)}</span>
       </span>
@@ -176,6 +183,14 @@
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
+  }
+
+  .color-swatch {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
   }
 
   .source-row :global(.source-icon) {

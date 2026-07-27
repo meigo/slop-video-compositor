@@ -16,6 +16,7 @@ import {
 } from "$lib/history";
 import { newId } from "$lib/id";
 import {
+  contentDuration,
   createProject,
   defaultTransform,
   evenCanvasDim,
@@ -441,7 +442,7 @@ export function setCanvasSize(width: number, height: number) {
   app.status = `Canvas ${w}×${h}`;
 }
 
-/** Set sequence length (seconds). Clamped to at least last clip end. */
+/** Set sequence length (seconds). Shorter than content trims/deletes clip tails. */
 export function setTimelineDuration(secs: number) {
   const p = project();
   const next = setProjectDuration(p, secs);
@@ -451,7 +452,11 @@ export function setTimelineDuration(secs: number) {
   if (app.playhead > projectDuration(next)) {
     app.playhead = projectDuration(next);
   }
-  app.status = `Timeline ${projectDuration(next).toFixed(2)}s`;
+  const d = projectDuration(next);
+  app.status =
+    secs < contentDuration(p)
+      ? `Sequence out ${d.toFixed(2)}s (trimmed)`
+      : `Timeline ${d.toFixed(2)}s`;
 }
 
 export function setPlayhead(t: number) {

@@ -13,6 +13,7 @@ import {
   PROJECT_FPS,
   snapToFrame,
   evenCanvasDim,
+  trimProjectToTime,
 } from "./project";
 import type { Clip, Project } from "./types";
 
@@ -60,8 +61,55 @@ describe("projectDuration", () => {
     const next = setProjectDuration(p, 20);
     expect(contentDuration(next)).toBe(5);
     expect(projectDuration(next)).toBe(20);
-    // Cannot shrink below content
-    expect(projectDuration(setProjectDuration(next, 2))).toBe(5);
+  });
+
+  it("shrinks with program-out trim when set below content", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 10 }),
+      sampleClip({ id: "b", timelineStart: 12, sourceIn: 0, sourceOut: 3 }),
+    );
+    const next = setProjectDuration(p, 5);
+    expect(projectDuration(next)).toBe(5);
+    expect(contentDuration(next)).toBe(5);
+    expect(next.tracks[0].clips).toHaveLength(1);
+    expect(next.tracks[0].clips[0].id).toBe("a");
+    expect(next.tracks[0].clips[0].sourceOut).toBe(5);
+  });
+});
+
+describe("trimProjectToTime", () => {
+  it("deletes clips fully past the out point", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "keep", timelineStart: 0, sourceIn: 0, sourceOut: 2 }),
+      sampleClip({ id: "gone", timelineStart: 5, sourceIn: 0, sourceOut: 2 }),
+    );
+    const next = trimProjectToTime(p, 3);
+    expect(next.tracks[0].clips.map((c) => c.id)).toEqual(["keep"]);
+    expect(next.duration).toBe(3);
+  });
+
+  it("right-trims straddling clips on all tracks", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "v1", timelineStart: 0, sourceIn: 2, sourceOut: 12 }),
+    );
+    p.tracks[1].clips.push(
+      sampleClip({ id: "v2", timelineStart: 4, sourceIn: 0, sourceOut: 10 }),
+    );
+    const next = trimProjectToTime(p, 6);
+    expect(next.tracks[0].clips[0].sourceOut).toBe(8); // 2 + (6 - 0)
+    expect(next.tracks[1].clips[0].sourceOut).toBe(2); // 0 + (6 - 4)
+    expect(next.tracks[1].clips[0].timelineStart).toBe(4);
+    expect(contentDuration(next)).toBe(6);
+  });
+
+  it("is no-op when already within t", () => {
+    const p = createProject();
+    p.duration = 10;
+    p.tracks[0].clips.push(sampleClip({ timelineStart: 0, sourceIn: 0, sourceOut: 3 }));
+    expect(trimProjectToTime(p, 10)).toBe(p);
   });
 });
 

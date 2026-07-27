@@ -67,19 +67,72 @@ export function contentDuration(p: Project): number {
 
 /**
  * Effective timeline / export length: max(user duration, content).
- * Clips always win so the handle cannot crop media.
+ * After a program-out trim, content ≤ stored duration; extending past content
+ * only lengthens the black tail.
  */
 export function projectDuration(p: Project): number {
   const stored = Number.isFinite(p.duration) ? Math.max(0, p.duration) : 0;
   return Math.max(contentDuration(p), stored);
 }
 
-/** Set sequence length (seconds). Clamped to at least content duration. */
+/**
+ * Hard-cut program out at time `t`: delete clips that start at/after `t`,
+ * right-trim clips that straddle `t`, leave earlier clips alone.
+ * Sets `duration` to `t` (no longer forced ≥ content).
+ */
+export function trimProjectToTime(p: Project, t: number): Project {
+  const end = Number.isFinite(t) ? Math.max(0, t) : 0;
+  let changed = p.duration !== end;
+  const tracks = p.tracks.map((track) => {
+    const clips: Clip[] = [];
+    let trackChanged = false;
+    for (const clip of track.clips) {
+      const c0 = clip.timelineStart;
+      const c1 = c0 + clipDuration(clip);
+      if (c0 >= end) {
+        trackChanged = true;
+        continue;
+      }
+      if (c1 <= end) {
+        clips.push(clip);
+        continue;
+      }
+      // Straddles end → trim sourceOut so timeline end === end
+      const newSourceOut = clip.sourceIn + (end - c0);
+      if (!(newSourceOut > clip.sourceIn)) {
+        trackChanged = true;
+        continue;
+      }
+      if (newSourceOut !== clip.sourceOut) {
+        trackChanged = true;
+        clips.push({ ...clip, sourceOut: newSourceOut });
+      } else {
+        clips.push(clip);
+      }
+    }
+    if (trackChanged) {
+      changed = true;
+      return { ...track, clips };
+    }
+    return track;
+  });
+  if (!changed) return p;
+  return { ...p, tracks, duration: end };
+}
+
+/**
+ * Set sequence length (seconds).
+ * - Longer than content → black tail only (clips unchanged).
+ * - Shorter than content → program out: trim/delete clip tails past `secs`.
+ */
 export function setProjectDuration(p: Project, secs: number): Project {
+  const duration = Number.isFinite(secs) ? Math.max(0, secs) : 0;
   const content = contentDuration(p);
-  const duration = Math.max(content, Number.isFinite(secs) ? Math.max(0, secs) : 0);
-  if (p.duration === duration) return p;
-  return { ...p, duration };
+  if (duration >= content) {
+    if (p.duration === duration) return p;
+    return { ...p, duration };
+  }
+  return trimProjectToTime(p, duration);
 }
 
 function isFiniteNumber(n: unknown): n is number {

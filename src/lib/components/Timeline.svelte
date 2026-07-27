@@ -11,6 +11,7 @@
     trimClipIn,
     trimClipOut,
   } from "$lib/clips";
+  import { clipColorCssVars } from "$lib/clipColor";
   import {
     clipDuration,
     cloneProject,
@@ -66,6 +67,11 @@
   let resizingDuration = $state(false);
   let durationPointerId: number | null = null;
   let durationDragBefore: Project | null = null;
+  /**
+   * Rubber-band preview while dragging the program-out handle.
+   * Destructive trim is applied only on release (from the pre-drag snapshot).
+   */
+  let durationPreview: number | null = $state(null);
 
   /** Bound to the length number field (seconds). */
   let durationInput = $state(10);
@@ -73,8 +79,10 @@
   const p = $derived(project());
   const seqDuration = $derived(projectDuration(p));
   const contentEnd = $derived(contentDuration(p));
+  /** Handle / field / width while resizing use the live preview time. */
+  const displayDuration = $derived(durationPreview ?? seqDuration);
   /** Timeline content ends exactly at sequence length (no dead overflow). */
-  const endTime = $derived(Math.max(seqDuration, 1));
+  const endTime = $derived(Math.max(displayDuration, 1));
   /** Only a few px past the end so the duration grip isn’t clipped by the scroller. */
   const contentWidth = $derived(Math.ceil(endTime * pxPerSecond) + DURATION_HANDLE_PX);
   /** Highest priority (last array index) at top of UI. */
@@ -85,6 +93,8 @@
     // Keep the number field in sync when duration changes elsewhere
     if (!resizingDuration) {
       durationInput = Math.round(seqDuration * 100) / 100;
+    } else if (durationPreview != null) {
+      durationInput = Math.round(durationPreview * 100) / 100;
     }
   });
 
@@ -203,6 +213,7 @@
   function endDurationResize() {
     resizingDuration = false;
     durationPointerId = null;
+    durationPreview = null;
     window.removeEventListener("pointermove", onDurationPointerMove);
     window.removeEventListener("pointerup", onDurationPointerUp);
     window.removeEventListener("pointercancel", onDurationPointerUp);
@@ -228,10 +239,10 @@
     durationPointerId = e.pointerId;
     app.playing = false;
 
-    // Apply immediately so a click still sets length to this edge
-    const t = clientXToTime(e.clientX);
-    setPresentLive(setProjectDuration(project(), t));
-    durationInput = Math.round(projectDuration(project()) * 100) / 100;
+    // Rubber-band only during drag — trim applied on release so left/right scrub is safe.
+    const t = Math.max(0, clientXToTime(e.clientX));
+    durationPreview = t;
+    durationInput = Math.round(t * 100) / 100;
 
     window.addEventListener("pointermove", onDurationPointerMove);
     window.addEventListener("pointerup", onDurationPointerUp);
@@ -241,30 +252,36 @@
   function onDurationPointerMove(e: PointerEvent) {
     if (!resizingDuration) return;
     if (durationPointerId !== null && e.pointerId !== durationPointerId) return;
-    const t = clientXToTime(e.clientX);
-    setPresentLive(setProjectDuration(project(), t));
-    durationInput = Math.round(projectDuration(project()) * 100) / 100;
+    const t = Math.max(0, clientXToTime(e.clientX));
+    durationPreview = t;
+    durationInput = Math.round(t * 100) / 100;
   }
 
   function onDurationPointerUp(e: PointerEvent) {
     if (durationPointerId !== null && e.pointerId !== durationPointerId) return;
     const before = durationDragBefore;
-    const after = project();
+    const t = durationPreview ?? projectDuration(project());
     durationDragBefore = null;
     endDurationResize();
 
-    // Live path only rewrote present — one undo entry from the pre-drag snapshot.
+    // One undo entry: pre-drag snapshot → program out (trim if shorter than content).
     if (before) {
+      const after = setProjectDuration(before, t);
       app.history = {
         past: [...app.history.past, before].slice(-50),
         present: after,
         future: [],
       };
-    }
-    app.dirty = true;
-    app.status = `Timeline ${projectDuration(after).toFixed(2)}s`;
-    if (app.playhead > projectDuration(after)) {
-      app.playhead = projectDuration(after);
+      app.dirty = true;
+      app.status =
+        t < contentDuration(before)
+          ? `Sequence out ${projectDuration(after).toFixed(2)}s (trimmed)`
+          : `Timeline ${projectDuration(after).toFixed(2)}s`;
+      if (app.playhead > projectDuration(after)) {
+        app.playhead = projectDuration(after);
+      }
+    } else {
+      setTimelineDuration(t);
     }
   }
 
@@ -530,7 +547,7 @@
       </span>
       <label
         class="duration-field"
-        title="Sequence length (cannot go shorter than last clip end: {formatTimestamp(contentEnd)})"
+        title="Sequence end (program out). Values shorter than media trim clips past that time."
       >
         <span class="muted">Length</span>
         <input
@@ -639,8 +656,7 @@
                     class="clip"
                     class:active={clip.id === app.selectedClipId}
                     class:dragging={dragClipId === clip.id}
-                    style:left="{left}px"
-                    style:width="{width}px"
+                    style="{clipColorCssVars(clip.sourcePath)}; left: {left}px; width: {width}px"
                     title={clip.sourcePath}
                     role="button"
                     tabindex="0"
@@ -712,21 +728,24 @@
             <div class="playhead-head" aria-hidden="true"></div>
           </div>
 
-          <!-- Sequence end handle — drag to set global timeline length -->
+          <!-- Sequence end handle — program out (extend black or trim clips on release) -->
           <div
             class="duration-handle"
             class:active={resizingDuration}
-            style:left="{seqDuration * pxPerSecond}px"
+            class:preview-trim={resizingDuration &&
+              durationPreview != null &&
+              durationPreview < contentEnd}
+            style:left="{displayDuration * pxPerSecond}px"
             style:height="100%"
             style:width="{DURATION_HANDLE_PX}px"
             role="slider"
             tabindex="0"
-            aria-label="Sequence length — drag to adjust"
-            aria-valuemin={contentEnd}
-            aria-valuemax={Math.max(contentEnd + 3600, seqDuration)}
-            aria-valuenow={seqDuration}
-            aria-valuetext="{formatTimestamp(seqDuration)} ({seqDuration.toFixed(2)}s)"
-            title="Sequence length {formatTimestamp(seqDuration)} — drag to extend or shrink (min = last clip)"
+            aria-label="Sequence end — drag to set program out (trims clips when shortened)"
+            aria-valuemin={0}
+            aria-valuemax={Math.max(contentEnd + 3600, displayDuration)}
+            aria-valuenow={displayDuration}
+            aria-valuetext="{formatTimestamp(displayDuration)} ({displayDuration.toFixed(2)}s)"
+            title="Sequence end {formatTimestamp(displayDuration)} — drag right for black tail, left to trim clips past this time"
             onpointerdown={startDurationResize}
             onkeydown={(e) => {
               if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -972,13 +991,25 @@
   }
 
   .clip {
+    /* Per-source colors via --clip-h/s/l (clipColorCssVars); fallback = accent blue */
+    --clip-h: 217;
+    --clip-s: 78;
+    --clip-l: 62;
     position: absolute;
     top: 4px;
     bottom: 4px;
     display: flex;
     align-items: center;
-    background: rgba(91, 140, 255, 0.28);
-    border: 1px solid rgba(91, 140, 255, 0.55);
+    background: hsla(
+      var(--clip-h),
+      calc(var(--clip-s) * 1%),
+      calc(var(--clip-l) * 1%),
+      0.28
+    );
+    border: 1px solid
+      hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.55);
+    border-left: 3px solid
+      hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.95);
     border-radius: 4px;
     overflow: hidden;
     cursor: grab;
@@ -990,13 +1021,35 @@
   }
 
   .clip:hover {
-    background: rgba(91, 140, 255, 0.38);
+    background: hsla(
+      var(--clip-h),
+      calc(var(--clip-s) * 1%),
+      calc(var(--clip-l) * 1%),
+      0.4
+    );
   }
 
   .clip.active {
-    border-color: var(--accent);
-    background: rgba(91, 140, 255, 0.48);
-    box-shadow: 0 0 0 1px var(--accent);
+    border-color: hsla(
+      var(--clip-h),
+      calc(var(--clip-s) * 1%),
+      calc((var(--clip-l) + 8) * 1%),
+      0.95
+    );
+    border-left-color: hsla(
+      var(--clip-h),
+      calc(var(--clip-s) * 1%),
+      calc((var(--clip-l) + 10) * 1%),
+      1
+    );
+    background: hsla(
+      var(--clip-h),
+      calc(var(--clip-s) * 1%),
+      calc(var(--clip-l) * 1%),
+      0.52
+    );
+    box-shadow: 0 0 0 1px
+      hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.85);
   }
 
   .clip.dragging {
@@ -1083,6 +1136,11 @@
   .duration-handle.active .duration-handle-bar,
   .duration-handle:hover .duration-handle-bar {
     background: var(--accent-hover);
+  }
+
+  .duration-handle.preview-trim .duration-handle-bar,
+  .duration-handle.preview-trim .duration-handle-grip {
+    background: var(--warn);
   }
 
   .duration-handle-bar {
