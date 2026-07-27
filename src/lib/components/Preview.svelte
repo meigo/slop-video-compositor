@@ -18,18 +18,39 @@
 
   const SCALE_MIN = 0.05;
   const SCALE_MAX = 8;
-  /** Near end of trimmed source — treat as clip finished (1 frame @ 30fps). */
+  /** Near end of trimmed source — treat as clip finished. */
   const CLIP_END_EPS = 1 / 30;
+  /** Start warming the next clip this many seconds before the cut. */
+  const PREFETCH_LEAD = 0.85;
+
+  type Slot = {
+    el: HTMLVideoElement | undefined;
+    path: string | null;
+    clipId: string | null;
+    /** Seek target last applied (source seconds). */
+    seekTo: number;
+    /** True once loaded + seeked to seekTo with a decodable frame. */
+    ready: boolean;
+  };
 
   let canvasEl: HTMLCanvasElement | undefined = $state();
-  let videoEl: HTMLVideoElement | undefined = $state();
+  let videoA: HTMLVideoElement | undefined = $state();
+  let videoB: HTMLVideoElement | undefined = $state();
 
-  let loadedPath: string | null = null;
-  /** Clip id currently free-running under play() — re-seek only when this changes. */
+  const slots: [Slot, Slot] = [
+    { el: undefined, path: null, clipId: null, seekTo: 0, ready: false },
+    { el: undefined, path: null, clipId: null, seekTo: 0, ready: false },
+  ];
+  let activeIdx = 0;
+  /** Clip currently free-running on the active slot. */
   let playingClipId: string | null = null;
+  let prefetchClipId: string | null = null;
+  let prefetchGen = 0;
   let syncGen = 0;
   let rafId = 0;
   let lastRafMs = 0;
+  /** Hold last painted frame across cuts instead of flashing black. */
+  let holdFrame = false;
 
   // Transform pan drag (single undo entry on pointerup)
   let dragClipId: string | null = null;
@@ -47,6 +68,19 @@
   const canvasH = $derived(Math.max(1, Math.round(p.canvas.height)));
   const canTransform = $derived(!!selectedClip());
 
+  function activeSlot(): Slot {
+    return slots[activeIdx]!;
+  }
+
+  function standbySlot(): Slot {
+    return slots[1 - activeIdx]!;
+  }
+
+  function bindSlots() {
+    slots[0]!.el = videoA;
+    slots[1]!.el = videoB;
+  }
+
   function assetUrl(path: string): string {
     try {
       return convertFileSrc(path);
@@ -59,43 +93,93 @@
     return clip.sourceIn + (t - clip.timelineStart);
   }
 
-  function srcDims(clip: Clip): { w: number; h: number } {
+  function clipEnd(clip: Clip): number {
+    return clip.timelineStart + clipDuration(clip);
+  }
+
+  /** Clip that starts at or after this clip's exclusive timeline end (skipping black). */
+  function nextClipAfter(proj: Project, clip: Clip): Clip | null {
+    let t = clipEnd(clip);
+    const total = projectDuration(proj);
+    // Walk past black gaps a bit so we find the next media cut.
+    for (let i = 0; i < 8 && t < total; i++) {
+      const hit = clipAtTime(proj, t);
+      if (hit) return hit.clip;
+      // Jump to next critical time: sample slightly forward
+      t += 1 / 60;
+    }
+    return null;
+  }
+
+  function srcDims(clip: Clip, el: HTMLVideoElement | undefined): { w: number; h: number } {
     const meta = app.metaByPath.get(clip.sourcePath);
     if (meta && meta.width > 0 && meta.height > 0) {
       return { w: meta.width, h: meta.height };
     }
-    if (videoEl && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
-      return { w: videoEl.videoWidth, h: videoEl.videoHeight };
+    if (el && el.videoWidth > 0 && el.videoHeight > 0) {
+      return { w: el.videoWidth, h: el.videoHeight };
     }
     return { w: 0, h: 0 };
   }
 
-  function paint() {
-    if (!canvasEl) return;
+  function paintFrom(slot: Slot, clip: Clip): boolean {
+    if (!canvasEl || !slot.el) return false;
+    if (slot.el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return false;
+    if (slot.path !== clip.sourcePath) return false;
+
     const ctx = canvasEl.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) return false;
 
     const w = canvasEl.width;
     const h = canvasEl.height;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
+    const dims = srcDims(clip, slot.el);
+    if (dims.w <= 0 || dims.h <= 0) return false;
 
-    const hit = clipAtTime(project(), app.playhead);
-    if (!hit || !videoEl) return;
-    if (videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-    if (loadedPath !== hit.clip.sourcePath) return;
-
-    const dims = srcDims(hit.clip);
-    if (dims.w <= 0 || dims.h <= 0) return;
-
-    const rect = drawRect(dims.w, dims.h, w, h, hit.clip.transform);
-    if (rect.w <= 0 || rect.h <= 0) return;
+    const rect = drawRect(dims.w, dims.h, w, h, clip.transform);
+    if (rect.w <= 0 || rect.h <= 0) return false;
 
     try {
-      ctx.drawImage(videoEl, rect.x, rect.y, rect.w, rect.h);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(slot.el, rect.x, rect.y, rect.w, rect.h);
+      holdFrame = true;
+      return true;
     } catch {
-      // Frame not decodable yet
+      return false;
     }
+  }
+
+  function paintBlack() {
+    if (!canvasEl) return;
+    const ctx = canvasEl.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+    holdFrame = false;
+  }
+
+  function paint() {
+    if (!canvasEl) return;
+    const hit = clipAtTime(project(), app.playhead);
+
+    // Timeline gap — show real black
+    if (!hit) {
+      paintBlack();
+      return;
+    }
+
+    const clip = hit.clip;
+    const active = activeSlot();
+    if (paintFrom(active, clip)) return;
+
+    // Standby already has this clip (prefetched) — draw it during/after swap
+    const stand = standbySlot();
+    if (stand.clipId === clip.id && paintFrom(stand, clip)) return;
+
+    // Loading / seeking: keep previous frame instead of flashing black
+    if (holdFrame) return;
+
+    paintBlack();
   }
 
   function setPresentLive(next: Project) {
@@ -112,135 +196,240 @@
     });
   }
 
-  /** Hear clip audio while playing (unless user muted); stay silent while paused/scrubbing. */
   function applyAudioState() {
-    if (!videoEl) return;
-    videoEl.muted = app.previewMuted || !app.playing;
-    if (videoEl.volume !== 1) videoEl.volume = 1;
+    for (const s of slots) {
+      if (!s.el) continue;
+      // Only the active free-running slot should make sound.
+      const isActive = s === activeSlot() && playingClipId != null && s.clipId === playingClipId;
+      s.el.muted = app.previewMuted || !app.playing || !isActive;
+      if (s.el.volume !== 1) s.el.volume = 1;
+    }
   }
 
-  async function ensureVideo(path: string, gen: number): Promise<boolean> {
-    if (!videoEl) return false;
-    if (loadedPath === path && videoEl.src) {
-      applyAudioState();
-      return gen === syncGen;
+  function waitEvent(el: HTMLVideoElement, event: string, timeoutMs = 8000): Promise<void> {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        el.removeEventListener(event, finish);
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      el.addEventListener(event, finish);
+    });
+  }
+
+  async function loadPath(slot: Slot, path: string): Promise<boolean> {
+    const el = slot.el;
+    if (!el) return false;
+    if (slot.path === path && el.src) return true;
+
+    slot.ready = false;
+    slot.path = path;
+    el.pause();
+    el.src = assetUrl(path);
+    el.load();
+    await waitEvent(el, "loadeddata");
+    return slot.path === path;
+  }
+
+  async function seekSlot(slot: Slot, t: number, force = false): Promise<void> {
+    const el = slot.el;
+    if (!el) return;
+    const target = Math.max(0, t);
+    slot.seekTo = target;
+
+    // Already there — many engines won't fire `seeked` if currentTime is unchanged
+    if (Math.abs(el.currentTime - target) <= 0.01) {
+      if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) slot.ready = true;
+      return;
+    }
+    if (!force && slot.ready) {
+      // Non-force and close enough handled above; fall through only when far
     }
 
-    loadedPath = path;
-    videoEl.pause();
-    videoEl.src = assetUrl(path);
-    videoEl.load();
-    applyAudioState();
-
-    await new Promise<void>((resolve) => {
-      const el = videoEl;
-      if (!el) {
-        resolve();
-        return;
-      }
-      const done = () => {
-        el.removeEventListener("loadeddata", done);
-        el.removeEventListener("error", done);
-        resolve();
-      };
-      el.addEventListener("loadeddata", done);
-      el.addEventListener("error", done);
-    });
-
-    return gen === syncGen && loadedPath === path;
+    slot.ready = false;
+    const p = waitEvent(el, "seeked", 4000);
+    try {
+      el.currentTime = target;
+    } catch {
+      return;
+    }
+    await p;
+    if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      slot.ready = true;
+    }
   }
 
-  async function seekVideo(t: number, gen: number, force = false): Promise<void> {
-    if (!videoEl) return;
-    if (!force && Math.abs(videoEl.currentTime - t) <= 0.01) return;
+  /**
+   * Prepare a slot for a clip at a source time. Standby stays paused+muted.
+   * `valid()` must stay true across awaits (gen tokens).
+   */
+  async function prepareSlot(
+    slot: Slot,
+    clip: Clip,
+    sourceT: number,
+    opts: { play: boolean; valid: () => boolean },
+  ): Promise<boolean> {
+    if (!slot.el) return false;
+    slot.clipId = clip.id;
+    slot.ready = false;
 
-    await new Promise<void>((resolve) => {
-      const el = videoEl;
-      if (!el) {
-        resolve();
-        return;
-      }
-      const done = () => {
-        el.removeEventListener("seeked", done);
-        resolve();
-      };
-      el.addEventListener("seeked", done);
-      try {
-        el.currentTime = Math.max(0, t);
-      } catch {
-        el.removeEventListener("seeked", done);
-        resolve();
-      }
-    });
-    if (gen !== syncGen) return;
+    const ok = await loadPath(slot, clip.sourcePath);
+    if (!ok || !opts.valid()) return false;
+
+    const st = clamp(
+      sourceT,
+      clip.sourceIn,
+      Math.max(clip.sourceIn, clip.sourceOut - CLIP_END_EPS),
+    );
+    await seekSlot(slot, st, true);
+    if (!opts.valid() || slot.clipId !== clip.id) return false;
+
+    slot.ready = slot.el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+    if (!slot.ready) return false;
+
+    if (opts.play && app.playing) {
+      slot.el.muted = app.previewMuted;
+      void slot.el.play().catch(() => {});
+    } else {
+      slot.el.pause();
+      slot.el.muted = true;
+    }
+    return true;
   }
 
   async function syncPaused() {
     playingClipId = null;
+    prefetchClipId = null;
+    prefetchGen++;
     const gen = ++syncGen;
-    const hit = clipAtTime(project(), app.playhead);
+    bindSlots();
 
-    if (!videoEl) {
-      paint();
-      return;
-    }
+    const hit = clipAtTime(project(), app.playhead);
+    const active = activeSlot();
+    standbySlot().el?.pause();
 
     if (!hit) {
-      videoEl.pause();
-      applyAudioState();
-      if (gen === syncGen) paint();
+      active.el?.pause();
+      paintBlack();
       return;
     }
 
-    const ok = await ensureVideo(hit.clip.sourcePath, gen);
-    if (!ok || gen !== syncGen) return;
-
     const st = sourceTime(hit.clip, app.playhead);
-    await seekVideo(st, gen);
-    if (gen !== syncGen) return;
-
-    videoEl.pause();
+    const ok = await prepareSlot(active, hit.clip, st, {
+      play: false,
+      valid: () => gen === syncGen,
+    });
+    if (!ok || gen !== syncGen) return;
+    active.el?.pause();
     applyAudioState();
     paint();
   }
 
-  /**
-   * Start free-running a clip under play(). Seeks once to the playhead-mapped
-   * source time, then lets the element run — no per-frame drift correction.
-   */
-  async function startClipPlayback(clip: Clip, gen: number): Promise<void> {
-    if (!videoEl || !app.playing) return;
+  /** Warm standby with the upcoming clip at its sourceIn. */
+  function schedulePrefetch(fromClip: Clip) {
+    const proj = project();
+    const next = nextClipAfter(proj, fromClip);
+    if (!next) {
+      prefetchClipId = null;
+      return;
+    }
+    if (prefetchClipId === next.id && standbySlot().clipId === next.id && standbySlot().ready) {
+      return;
+    }
+    prefetchClipId = next.id;
+    const gen = ++prefetchGen;
+    const stand = standbySlot();
+    void prepareSlot(stand, next, next.sourceIn, {
+      play: false,
+      valid: () => gen === prefetchGen && app.playing,
+    }).then((ok) => {
+      if (!ok || gen !== prefetchGen) return;
+      stand.el?.pause();
+      if (stand.el) stand.el.muted = true;
+    });
+  }
 
-    playingClipId = clip.id;
-    const ok = await ensureVideo(clip.sourcePath, gen);
-    if (!ok || !app.playing || gen !== syncGen) {
-      if (playingClipId === clip.id) playingClipId = null;
+  function swapToStandby(nextClip: Clip): boolean {
+    const stand = standbySlot();
+    if (stand.clipId !== nextClip.id || !stand.ready || !stand.el) return false;
+
+    const prev = activeSlot();
+    prev.el?.pause();
+    if (prev.el) prev.el.muted = true;
+
+    activeIdx = (1 - activeIdx) as 0 | 1;
+    playingClipId = nextClip.id;
+
+    const active = activeSlot();
+    if (active.el) {
+      // Already seeked to sourceIn from prefetch — play immediately
+      active.el.muted = app.previewMuted;
+      void active.el.play().catch(() => {});
+    }
+    applyAudioState();
+    paint();
+
+    schedulePrefetch(nextClip);
+    return true;
+  }
+
+  async function startClipPlayback(clip: Clip, gen: number): Promise<void> {
+    bindSlots();
+    if (!app.playing) return;
+
+    // Prefer prefetched standby (seamless cut)
+    if (swapToStandby(clip)) return;
+
+    // Same-file continuation on active: seek without reload
+    const active = activeSlot();
+    if (
+      active.path === clip.sourcePath &&
+      active.el &&
+      active.el.readyState >= HTMLMediaElement.HAVE_METADATA
+    ) {
+      playingClipId = clip.id;
+      active.clipId = clip.id;
+      const local = app.playhead - clip.timelineStart;
+      const st = clamp(
+        clip.sourceIn + local,
+        clip.sourceIn,
+        Math.max(clip.sourceIn, clip.sourceOut - CLIP_END_EPS),
+      );
+      await seekSlot(active, st, true);
+      if (!app.playing || gen !== syncGen) {
+        if (playingClipId === clip.id) playingClipId = null;
+        return;
+      }
+      active.ready = true;
+      applyAudioState();
+      void active.el.play().catch(() => {});
+      paint();
+      schedulePrefetch(clip);
       return;
     }
 
-    const dur = clipDuration(clip);
+    // Cold start on active (first clip / cache miss)
+    playingClipId = clip.id;
     const local = app.playhead - clip.timelineStart;
     const st = clamp(
       clip.sourceIn + local,
       clip.sourceIn,
       Math.max(clip.sourceIn, clip.sourceOut - CLIP_END_EPS),
     );
-
-    await seekVideo(st, gen, true);
-    if (!app.playing || !videoEl || gen !== syncGen) {
+    const ok = await prepareSlot(active, clip, st, {
+      play: true,
+      valid: () => gen === syncGen && app.playing,
+    });
+    if (!ok || !app.playing || gen !== syncGen) {
       if (playingClipId === clip.id) playingClipId = null;
       return;
     }
-
-    // If we're already at/past the out point, don't play — tick will advance.
-    if (dur <= 0 || st >= clip.sourceOut - CLIP_END_EPS) {
-      videoEl.pause();
-      playingClipId = null;
-      return;
-    }
-
-    applyAudioState();
-    void videoEl.play().catch(() => {});
+    paint();
+    schedulePrefetch(clip);
   }
 
   function stopRaf() {
@@ -256,19 +445,15 @@
     app.playing = false;
     app.status = status;
     playingClipId = null;
-    videoEl?.pause();
+    prefetchClipId = null;
+    for (const s of slots) {
+      s.el?.pause();
+    }
     applyAudioState();
     paint();
     stopRaf();
   }
 
-  /**
-   * Playback clock:
-   * - On a clip: free-run `<video>` and drive the playhead from `currentTime`
-   *   (no wall-clock + drift-seek — that caused ~1s snap-back jitter).
-   * - In a black gap: advance playhead with wall-clock.
-   * - Clip change: one seek + play(), then free-run again.
-   */
   function tick(now: number) {
     if (!app.playing) {
       rafId = 0;
@@ -276,6 +461,7 @@
       return;
     }
 
+    bindSlots();
     if (lastRafMs === 0) lastRafMs = now;
     const wallDt = Math.min(0.25, (now - lastRafMs) / 1000);
     lastRafMs = now;
@@ -289,35 +475,42 @@
 
     let t = app.playhead;
     const hit = clipAtTime(proj, t);
+    const active = activeSlot();
 
-    if (hit && videoEl) {
+    if (hit && active.el) {
       const clip = hit.clip;
-      const clipEnd = clip.timelineStart + clipDuration(clip);
+      const end = clipEnd(clip);
 
-      // New clip (or first frame) → one-time lock, then free-run
-      if (playingClipId !== clip.id || loadedPath !== clip.sourcePath) {
+      if (playingClipId !== clip.id) {
         const gen = ++syncGen;
         void startClipPlayback(clip, gen);
         paint();
-      } else if (videoEl.seeking) {
-        // Wait for seek to land; don't wall-clock-fight the element
-        paint();
-      } else if (videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        const vidT = videoEl.currentTime;
+      } else if (active.el.seeking) {
+        paint(); // hold frame
+      } else if (active.el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        const vidT = active.el.currentTime;
         const pastOut = vidT >= clip.sourceOut - CLIP_END_EPS;
-        const ended = videoEl.ended;
+        const ended = active.el.ended;
 
         if (pastOut || ended) {
-          // Trim out or media EOF → leave this clip
-          t = clipEnd;
-          videoEl.pause();
+          t = end;
+          active.el.pause();
+          // Instant swap if prefetched
+          const next = nextClipAfter(proj, clip);
           playingClipId = null;
+          if (next && swapToStandby(next)) {
+            // playhead at cut; free-run continues on new active
+            t = next.timelineStart;
+          }
         } else {
-          // Free-run: timeline follows the decoder clock
           t = clip.timelineStart + Math.max(0, vidT - clip.sourceIn);
-          if (videoEl.paused) {
+          // Prefetch near the cut
+          if (clip.sourceOut - vidT <= PREFETCH_LEAD) {
+            schedulePrefetch(clip);
+          }
+          if (active.el.paused) {
             applyAudioState();
-            void videoEl.play().catch(() => {});
+            void active.el.play().catch(() => {});
           }
         }
         paint();
@@ -325,11 +518,22 @@
         paint();
       }
     } else {
-      // Black gap (or no decoder yet): wall-clock advance
+      // Black gap
       playingClipId = null;
-      videoEl?.pause();
+      active.el?.pause();
       t = t + wallDt;
+      holdFrame = false;
       paint();
+      // Prefetch whatever starts after this gap
+      const upcoming = clipAtTime(proj, t + 0.01);
+      if (upcoming && standbySlot().clipId !== upcoming.clip.id) {
+        const gen = ++prefetchGen;
+        prefetchClipId = upcoming.clip.id;
+        void prepareSlot(standbySlot(), upcoming.clip, upcoming.clip.sourceIn, {
+          play: false,
+          valid: () => gen === prefetchGen && app.playing,
+        });
+      }
     }
 
     if (t >= totalDur - 1e-6) {
@@ -337,7 +541,7 @@
       return;
     }
 
-    if (t !== app.playhead) setPlayhead(t);
+    if (Math.abs(t - app.playhead) > 1e-4) setPlayhead(t);
     rafId = requestAnimationFrame(tick);
   }
 
@@ -347,10 +551,12 @@
     rafId = requestAnimationFrame(tick);
   }
 
-  // Playback loop only
+  // Playback loop
   $effect(() => {
+    bindSlots();
     if (app.playing) {
-      playingClipId = null; // force re-lock on play start
+      playingClipId = null;
+      prefetchClipId = null;
       applyAudioState();
       startRaf();
       return () => {
@@ -360,26 +566,27 @@
     }
     stopRaf();
     playingClipId = null;
-    videoEl?.pause();
+    prefetchClipId = null;
+    for (const s of slots) s.el?.pause();
     applyAudioState();
   });
 
-  // Still-frame when paused: seek on playhead / project / meta changes
+  // Still-frame when paused
   $effect(() => {
     if (app.playing) return;
     void app.playhead;
     void project();
     void app.metaByPath;
+    void videoA;
+    void videoB;
     void syncPaused();
   });
 
-  // Mute toggle while playing
   $effect(() => {
     void app.previewMuted;
     applyAudioState();
   });
 
-  // Keep canvas buffer size in sync with project canvas
   $effect(() => {
     if (!canvasEl) return;
     if (canvasEl.width !== canvasW) canvasEl.width = canvasW;
@@ -422,7 +629,6 @@
     }
 
     dragClipId = clip.id;
-    // cloneProject — structuredClone throws on Svelte 5 $state proxies
     dragBefore = cloneProject(project());
     dragStartX = clip.transform.x;
     dragStartY = clip.transform.y;
@@ -518,7 +724,8 @@
   onDestroy(() => {
     stopRaf();
     detachDragListeners();
-    videoEl?.pause();
+    videoA?.pause();
+    videoB?.pause();
   });
 </script>
 
@@ -532,9 +739,11 @@
     onpointerdown={onPointerDown}
     onwheel={onWheel}
   ></canvas>
-  <!-- Decoder for local media frames + preview audio (unmuted only while playing) -->
+  <!-- Dual decoders: active free-runs, standby prefetches the next cut -->
   <!-- svelte-ignore a11y_media_has_caption -->
-  <video bind:this={videoEl} class="decoder" playsinline preload="auto"></video>
+  <video bind:this={videoA} class="decoder" playsinline preload="auto"></video>
+  <!-- svelte-ignore a11y_media_has_caption -->
+  <video bind:this={videoB} class="decoder" playsinline preload="auto"></video>
 </div>
 
 <style>
