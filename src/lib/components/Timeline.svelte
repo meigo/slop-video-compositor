@@ -107,6 +107,27 @@
     app.selectedTrackId = trackId;
   }
 
+  function detachDragListeners() {
+    window.removeEventListener("pointermove", onWindowPointerMove);
+    window.removeEventListener("pointerup", onWindowPointerUp);
+    window.removeEventListener("pointercancel", onWindowPointerCancel);
+  }
+
+  function attachDragListeners() {
+    // Window-level listeners survive clip reparent (Svelte destroy of old node).
+    window.addEventListener("pointermove", onWindowPointerMove);
+    window.addEventListener("pointerup", onWindowPointerUp);
+    window.addEventListener("pointercancel", onWindowPointerCancel);
+  }
+
+  function clearDragState() {
+    dragKind = null;
+    dragClipId = null;
+    dragBefore = null;
+    pointerId = null;
+    didMove = false;
+  }
+
   function onRulerPointerDown(e: PointerEvent) {
     if (e.button !== 0) return;
     setPlayhead(clientXToTime(e.clientX));
@@ -116,6 +137,7 @@
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest(".clip")) return;
     selectTrack(trackId);
+    app.selectedClipId = null;
     setPlayhead(clientXToTime(e.clientX));
   }
 
@@ -123,6 +145,12 @@
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
+
+    // End any prior drag cleanly before starting another
+    if (dragKind) {
+      detachDragListeners();
+      clearDragState();
+    }
 
     const target = e.target as HTMLElement;
     const edge = target.dataset.edge as "in" | "out" | undefined;
@@ -143,10 +171,10 @@
     didMove = false;
     pointerId = e.pointerId;
 
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    attachDragListeners();
   }
 
-  function onClipPointerMove(e: PointerEvent) {
+  function onWindowPointerMove(e: PointerEvent) {
     if (!dragKind || !dragClipId || !dragBefore) return;
     if (pointerId !== null && e.pointerId !== pointerId) return;
 
@@ -182,13 +210,12 @@
     const before = dragBefore;
     const after = project();
     const kind = dragKind;
+    const moved = didMove;
 
-    dragKind = null;
-    dragClipId = null;
-    dragBefore = null;
-    pointerId = null;
+    detachDragListeners();
+    clearDragState();
 
-    if (!didMove) {
+    if (!moved) {
       // Click only — present never mutated
       return;
     }
@@ -204,20 +231,18 @@
       kind === "move" ? "Moved clip" : kind === "trim-in" ? "Trimmed in" : "Trimmed out";
   }
 
-  function onClipPointerUp(e: PointerEvent) {
+  function onWindowPointerUp(e: PointerEvent) {
     finishDrag(e);
   }
 
-  function onClipPointerCancel(e: PointerEvent) {
+  function onWindowPointerCancel(e: PointerEvent) {
+    if (pointerId !== null && e.pointerId !== pointerId) return;
     // Revert live edits if cancelled mid-drag
     if (dragBefore && didMove) {
       app.history = { ...app.history, present: dragBefore };
     }
-    dragKind = null;
-    dragClipId = null;
-    dragBefore = null;
-    pointerId = null;
-    didMove = false;
+    detachDragListeners();
+    clearDragState();
   }
 
   function onAddTrack() {
@@ -284,6 +309,7 @@
 
   onDestroy(() => {
     window.removeEventListener("keydown", onKeyDown);
+    detachDragListeners();
   });
 </script>
 
@@ -389,12 +415,10 @@
                   role="button"
                   tabindex="0"
                   onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id)}
-                  onpointermove={onClipPointerMove}
-                  onpointerup={onClipPointerUp}
-                  onpointercancel={onClipPointerCancel}
                   onkeydown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
+                      e.stopPropagation();
                       selectClip(clip.id, track.id);
                     }
                   }}
