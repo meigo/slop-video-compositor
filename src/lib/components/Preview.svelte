@@ -254,10 +254,48 @@
     });
   }
 
+  /** Wait until the element has a decodable frame (import often races paint before this). */
+  function waitForFrame(el: HTMLVideoElement, timeoutMs = 4000): Promise<void> {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        el.removeEventListener("loadeddata", onReady);
+        el.removeEventListener("canplay", onReady);
+        el.removeEventListener("seeked", onReady);
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+
+      const anyEl = el as HTMLVideoElement & {
+        requestVideoFrameCallback?: (cb: () => void) => number;
+      };
+      if (typeof anyEl.requestVideoFrameCallback === "function") {
+        anyEl.requestVideoFrameCallback(() => finish());
+        // Still arm media events in case RVFC is delayed while paused
+      }
+
+      const onReady = () => {
+        if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && el.videoWidth > 0) {
+          // Two rAFs: first layout, second after the browser presents the frame
+          requestAnimationFrame(() => requestAnimationFrame(finish));
+        }
+      };
+      el.addEventListener("loadeddata", onReady);
+      el.addEventListener("canplay", onReady);
+      el.addEventListener("seeked", onReady);
+      onReady();
+    });
+  }
+
   async function loadPath(slot: Slot, path: string): Promise<boolean> {
     const el = slot.el;
     if (!el) return false;
-    if (slot.path === path && el.src) return true;
+    if (slot.path === path && el.src && el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      return true;
+    }
 
     slot.ready = false;
     slot.path = path;
@@ -265,33 +303,34 @@
     el.src = assetUrl(path);
     el.load();
     await waitEvent(el, "loadeddata");
+    if (slot.path !== path) return false;
+    if (el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      await waitEvent(el, "canplay", 4000);
+    }
+    await waitForFrame(el);
     return slot.path === path;
   }
 
-  async function seekSlot(slot: Slot, t: number, force = false): Promise<void> {
+  async function seekSlot(slot: Slot, t: number, _force = false): Promise<void> {
     const el = slot.el;
     if (!el) return;
     const target = Math.max(0, t);
     slot.seekTo = target;
+    slot.ready = false;
 
     // Already there — many engines won't fire `seeked` if currentTime is unchanged
-    if (Math.abs(el.currentTime - target) <= 0.01) {
-      if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) slot.ready = true;
-      return;
-    }
-    if (!force && slot.ready) {
-      // Non-force and close enough handled above; fall through only when far
+    if (Math.abs(el.currentTime - target) > 0.01) {
+      const p = waitEvent(el, "seeked", 4000);
+      try {
+        el.currentTime = target;
+      } catch {
+        return;
+      }
+      await p;
     }
 
-    slot.ready = false;
-    const p = waitEvent(el, "seeked", 4000);
-    try {
-      el.currentTime = target;
-    } catch {
-      return;
-    }
-    await p;
-    if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    await waitForFrame(el);
+    if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && el.videoWidth > 0) {
       slot.ready = true;
     }
   }
@@ -321,7 +360,8 @@
     await seekSlot(slot, st, true);
     if (!opts.valid() || slot.clipId !== clip.id) return false;
 
-    slot.ready = slot.el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+    slot.ready =
+      slot.el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && slot.el.videoWidth > 0;
     if (!slot.ready) return false;
 
     if (opts.play && app.playing) {
@@ -332,6 +372,21 @@
       slot.el.muted = true;
     }
     return true;
+  }
+
+  /** Paint when a decoder emits a frame for the current still/playhead (fixes import black frame). */
+  function onDecoderFrame() {
+    if (app.playing) return;
+    bindSlots();
+    const hit = clipAtTime(project(), app.playhead);
+    if (!hit) return;
+    const active = activeSlot();
+    if (active.path === hit.clip.sourcePath && active.el) {
+      if (active.el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        active.ready = true;
+        paint();
+      }
+    }
   }
 
   async function syncPaused() {
@@ -347,6 +402,7 @@
 
     if (!hit) {
       active.el?.pause();
+      // Only clear if nothing is on the timeline at the playhead
       paintBlack();
       return;
     }
@@ -359,7 +415,12 @@
     if (!ok || gen !== syncGen) return;
     active.el?.pause();
     applyAudioState();
+    // Force redraw after the decoder has a frame (import used to leave a black canvas
+    // until the next scrub/play interaction re-entered this path).
     paint();
+    requestAnimationFrame(() => {
+      if (gen === syncGen) paint();
+    });
   }
 
   /** Warm standby with the upcoming clip at its sourceIn. */
@@ -966,9 +1027,25 @@
   </div>
   <!-- Dual decoders: active free-runs, standby prefetches the next cut -->
   <!-- svelte-ignore a11y_media_has_caption -->
-  <video bind:this={videoA} class="decoder" playsinline preload="auto"></video>
+  <video
+    bind:this={videoA}
+    class="decoder"
+    playsinline
+    preload="auto"
+    onloadeddata={onDecoderFrame}
+    onseeked={onDecoderFrame}
+    oncanplay={onDecoderFrame}
+  ></video>
   <!-- svelte-ignore a11y_media_has_caption -->
-  <video bind:this={videoB} class="decoder" playsinline preload="auto"></video>
+  <video
+    bind:this={videoB}
+    class="decoder"
+    playsinline
+    preload="auto"
+    onloadeddata={onDecoderFrame}
+    onseeked={onDecoderFrame}
+    oncanplay={onDecoderFrame}
+  ></video>
 </div>
 
 <style>
