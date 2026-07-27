@@ -10,6 +10,8 @@ import {
   defaultTransform,
   cloneProject,
   DEFAULT_DURATION,
+  PROJECT_FPS,
+  snapToFrame,
 } from "./project";
 import type { Clip, Project } from "./types";
 
@@ -111,5 +113,15 @@ describe("cloneProject", () => {
     expect(copy.tracks[0].clips[0]).not.toBe(p.tracks[0].clips[0]);
     copy.tracks[0].clips[0].timelineStart = 99;
     expect(p.tracks[0].clips[0].timelineStart).toBe(2);
+  });
+});
+
+describe("snapToFrame", () => {
+  it("snaps to project fps grid", () => {
+    expect(PROJECT_FPS).toBe(30);
+    expect(snapToFrame(0)).toBe(0);
+    expect(snapToFrame(1 / 30)).toBeCloseTo(1 / 30, 10);
+    expect(snapToFrame(1 / 30 + 0.001)).toBeCloseTo(1 / 30, 10);
+    expect(snapToFrame(1)).toBe(1);
   });
 });

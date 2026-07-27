@@ -4,6 +4,18 @@ import type { Clip, ClipTransform, Project, Track } from "./types";
 export const DEFAULT_CANVAS = { width: 1920, height: 1080 };
 /** Default empty-sequence length (seconds). */
 export const DEFAULT_DURATION = 10;
+/** Timeline / export frame rate (matches ffmpeg export `-r 30`). */
+export const PROJECT_FPS = 30;
+
+export function frameDuration(fps = PROJECT_FPS): number {
+  return 1 / fps;
+}
+
+/** Snap seconds to the nearest frame index at `fps`. */
+export function snapToFrame(secs: number, fps = PROJECT_FPS): number {
+  if (!Number.isFinite(secs) || secs < 0) return 0;
+  return Math.round(secs * fps) / fps;
+}
 
 export function defaultTransform(): ClipTransform {
   return { scale: 1, x: 0, y: 0 };

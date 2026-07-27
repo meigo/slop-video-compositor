@@ -31,6 +31,8 @@
     setCanvasSize,
     setPlayhead,
     setTimelineHeight,
+    stepPlayheadFrames,
+    stepPlayheadSeconds,
     undo,
     redo,
     updateSelectedClipFields,
@@ -100,6 +102,15 @@
     if (event.key === " " || event.code === "Space") {
       event.preventDefault();
       togglePlay();
+      return;
+    }
+
+    // Frame step (export fps = 30). Shift = 1 second.
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      const dir = event.key === "ArrowLeft" ? -1 : 1;
+      if (event.shiftKey) stepPlayheadSeconds(dir);
+      else stepPlayheadFrames(dir);
     }
   }
 

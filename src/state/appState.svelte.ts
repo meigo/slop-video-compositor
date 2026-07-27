@@ -13,8 +13,10 @@ import { newId } from "$lib/id";
 import {
   createProject,
   defaultTransform,
+  PROJECT_FPS,
   projectDuration,
   setProjectDuration,
+  snapToFrame,
 } from "$lib/project";
 import {
   checkDeps,
@@ -426,7 +428,27 @@ export function setTimelineDuration(secs: number) {
 }
 
 export function setPlayhead(t: number) {
-  app.playhead = Math.max(0, t);
+  const max = projectDuration(project());
+  app.playhead = Math.min(max, Math.max(0, t));
+}
+
+/**
+ * Step the playhead by whole frames at `PROJECT_FPS` (export rate).
+ * Pauses playback. Positive = forward, negative = backward.
+ */
+export function stepPlayheadFrames(frames: number, fps = PROJECT_FPS) {
+  if (!Number.isFinite(frames) || frames === 0) return;
+  app.playing = false;
+  const max = projectDuration(project());
+  const curFrame = Math.round(app.playhead * fps);
+  const next = (curFrame + frames) / fps;
+  app.playhead = Math.min(max, Math.max(0, snapToFrame(next, fps)));
+}
+
+/** Step by whole seconds (snapped to frame grid). */
+export function stepPlayheadSeconds(secs: number, fps = PROJECT_FPS) {
+  if (!Number.isFinite(secs) || secs === 0) return;
+  stepPlayheadFrames(Math.round(secs * fps), fps);
 }
 
 export function setSelectedClip(id: string | null) {

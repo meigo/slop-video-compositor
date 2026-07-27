@@ -88,6 +88,8 @@ If a source file moved, select the clip → **Relink…** in the Inspector.
 | Key | Action |
 |-----|--------|
 | Space | Play / pause |
+| ← / → | Step playhead by **1 frame** (30 fps) |
+| Shift+← / → | Step playhead by **1 second** |
 | S | Split selected clip at playhead |
 | Delete / Backspace | Delete selected clip |
 | ⌘S / Ctrl+S | Save |

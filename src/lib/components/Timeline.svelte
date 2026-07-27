@@ -27,6 +27,8 @@
     project,
     setPlayhead,
     setTimelineDuration,
+    stepPlayheadFrames,
+    stepPlayheadSeconds,
   } from "../../state/appState.svelte";
 
   const TRACK_H = 40;
@@ -699,10 +701,10 @@
             onkeydown={(e) => {
               if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
                 e.preventDefault();
-                const step = e.shiftKey ? 1 : 0.1;
-                const delta = e.key === "ArrowLeft" ? -step : step;
-                setPlayhead(Math.max(0, app.playhead + delta));
-                app.playing = false;
+                e.stopPropagation();
+                const dir = e.key === "ArrowLeft" ? -1 : 1;
+                if (e.shiftKey) stepPlayheadSeconds(dir);
+                else stepPlayheadFrames(dir);
               }
             }}
           >
