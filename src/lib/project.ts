@@ -24,6 +24,14 @@ export function clipDuration(c: Clip): number {
   return c.sourceOut - c.sourceIn;
 }
 
+/**
+ * Deep-clone a project for undo/drag snapshots.
+ * JSON round-trip works with Svelte 5 `$state` proxies; `structuredClone` can throw on them.
+ */
+export function cloneProject(p: Project): Project {
+  return JSON.parse(JSON.stringify(p)) as Project;
+}
+
 export function projectDuration(p: Project): number {
   let max = 0;
   for (const track of p.tracks) {

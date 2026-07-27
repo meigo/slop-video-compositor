@@ -11,7 +11,7 @@
     trimClipIn,
     trimClipOut,
   } from "$lib/clips";
-  import { clipDuration, projectDuration } from "$lib/project";
+  import { clipDuration, cloneProject, projectDuration } from "$lib/project";
   import { clamp, formatTimestamp } from "$lib/time";
   import type { Project } from "$lib/types";
   import {
@@ -200,7 +200,12 @@
     startScrub(e);
   }
 
-  function onClipPointerDown(e: PointerEvent, clipId: string, trackId: string) {
+  function onClipPointerDown(
+    e: PointerEvent,
+    clipId: string,
+    trackId: string,
+    forceEdge?: "in" | "out",
+  ) {
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
@@ -213,15 +218,28 @@
     }
 
     const target = e.target as HTMLElement;
-    const edge = target.dataset.edge as "in" | "out" | undefined;
+    const edge =
+      forceEdge ?? (target.closest("[data-edge]") as HTMLElement | null)?.dataset.edge as
+        | "in"
+        | "out"
+        | undefined;
     const foundClip = p.tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
     if (!foundClip) return;
 
     selectClip(clipId, trackId);
 
+    let snapshot: Project;
+    try {
+      // Must not use structuredClone on $state proxies — it throws and leaves drag stuck.
+      snapshot = cloneProject(project());
+    } catch (err) {
+      app.status = `Drag failed: ${err instanceof Error ? err.message : String(err)}`;
+      return;
+    }
+
     dragKind = edge === "in" ? "trim-in" : edge === "out" ? "trim-out" : "move";
     dragClipId = clipId;
-    dragBefore = structuredClone(project());
+    dragBefore = snapshot;
     dragOriginX = e.clientX;
     dragOriginY = e.clientY;
     startTimelineStart = foundClip.timelineStart;
@@ -505,6 +523,7 @@
                     data-edge="in"
                     style:width="{EDGE_PX}px"
                     aria-hidden="true"
+                    onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id, "in")}
                   ></span>
                   <span class="clip-label">{basename(clip.sourcePath)}</span>
                   <span
@@ -512,6 +531,7 @@
                     data-edge="out"
                     style:width="{EDGE_PX}px"
                     aria-hidden="true"
+                    onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id, "out")}
                   ></span>
                 </div>
               {/each}
@@ -735,8 +755,10 @@
     overflow: hidden;
     cursor: grab;
     user-select: none;
+    touch-action: none;
     min-width: 4px;
     box-sizing: border-box;
+    z-index: 1;
   }
 
   .clip:hover {
@@ -771,7 +793,8 @@
     align-self: stretch;
     cursor: ew-resize;
     background: transparent;
-    z-index: 1;
+    z-index: 2;
+    touch-action: none;
   }
 
   .edge:hover,
@@ -788,6 +811,8 @@
     cursor: ew-resize;
     touch-action: none;
     outline: none;
+    /* Only the hit strip receives events so clips under the line stay draggable */
+    pointer-events: none;
   }
 
   .playhead.scrubbing {
@@ -798,7 +823,7 @@
     background: rgba(240, 113, 120, 0.18);
   }
 
-  /* Wide invisible hit target for easier grab */
+  /* Wide invisible hit target for easier grab (only interactive part) */
   .playhead-hit {
     position: absolute;
     top: 0;
@@ -806,6 +831,7 @@
     width: 12px;
     height: 100%;
     background: transparent;
+    pointer-events: auto;
   }
 
   .playhead-head {

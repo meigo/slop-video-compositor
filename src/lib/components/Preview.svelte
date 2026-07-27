@@ -2,7 +2,7 @@
   import { convertFileSrc } from "@tauri-apps/api/core";
   import { onDestroy } from "svelte";
   import { findClip } from "$lib/clips";
-  import { projectDuration } from "$lib/project";
+  import { cloneProject, projectDuration } from "$lib/project";
   import { clipAtTime } from "$lib/resolve";
   import { clamp } from "$lib/time";
   import { drawRect } from "$lib/transform";
@@ -346,7 +346,8 @@
     }
 
     dragClipId = clip.id;
-    dragBefore = structuredClone(project());
+    // cloneProject — structuredClone throws on Svelte 5 $state proxies
+    dragBefore = cloneProject(project());
     dragStartX = clip.transform.x;
     dragStartY = clip.transform.y;
     dragOriginClientX = e.clientX;

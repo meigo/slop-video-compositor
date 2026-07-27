@@ -6,6 +6,7 @@ import {
   parseProject,
   serializeProject,
   defaultTransform,
+  cloneProject,
 } from "./project";
 import type { Clip, Project } from "./types";
 
@@ -55,5 +56,19 @@ describe("parse/serialize", () => {
   });
   it("rejects bad version", () => {
     expect(() => parseProject({ version: 99, name: "x", canvas: { width: 1, height: 1 }, tracks: [] })).toThrow();
+  });
+});
+
+describe("cloneProject", () => {
+  it("deep-clones so nested edits do not alias", () => {
+    const p = createProject("C");
+    p.tracks[0].clips.push(sampleClip());
+    const copy = cloneProject(p);
+    expect(copy).toEqual(p);
+    expect(copy).not.toBe(p);
+    expect(copy.tracks).not.toBe(p.tracks);
+    expect(copy.tracks[0].clips[0]).not.toBe(p.tracks[0].clips[0]);
+    copy.tracks[0].clips[0].timelineStart = 99;
+    expect(p.tracks[0].clips[0].timelineStart).toBe(2);
   });
 });
