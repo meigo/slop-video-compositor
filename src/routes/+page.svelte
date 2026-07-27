@@ -3,6 +3,7 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import MissingDeps from "$lib/components/MissingDeps.svelte";
   import StatusLine from "$lib/components/StatusLine.svelte";
+  import Timeline from "$lib/components/Timeline.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import Transport from "$lib/components/Transport.svelte";
   import {
@@ -153,61 +154,7 @@
     />
   </div>
 
-  <section class="timeline-placeholder" aria-label="Timeline">
-    <div class="timeline-head">
-      <span>Timeline</span>
-      <span class="muted">
-        {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
-        · {p.tracks.reduce((n, t) => n + t.clips.length, 0)} clip{p.tracks.reduce((n, t) => n + t.clips.length, 0) === 1
-          ? ""
-          : "s"}
-        · selected track
-        {p.tracks.find((t) => t.id === app.selectedTrackId)?.name ?? "—"}
-      </span>
-    </div>
-    <div class="tracks">
-      {#each [...p.tracks].reverse() as track (track.id)}
-        <div
-          class="track-row"
-          class:selected={track.id === app.selectedTrackId}
-          role="button"
-          tabindex="0"
-          onclick={() => {
-            app.selectedTrackId = track.id;
-          }}
-          onkeydown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              app.selectedTrackId = track.id;
-            }
-          }}
-        >
-          <span class="track-name">{track.name}</span>
-          <span class="track-clips muted">
-            {#if track.clips.length === 0}
-              empty
-            {:else}
-              {track.clips.length} clip{track.clips.length === 1 ? "" : "s"}
-              {#each track.clips as c (c.id)}
-                <button
-                  type="button"
-                  class="clip-chip"
-                  class:active={c.id === app.selectedClipId}
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    app.selectedClipId = c.id;
-                    app.selectedTrackId = track.id;
-                  }}
-                >
-                  {basename(c.sourcePath)}
-                </button>
-              {/each}
-            {/if}
-          </span>
-        </div>
-      {/each}
-    </div>
-  </section>
+  <Timeline />
 </div>
 
 <style>
@@ -257,99 +204,6 @@
   .muted {
     color: var(--muted);
     font-size: 0.85rem;
-  }
-
-  .timeline-placeholder {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.55rem 0.75rem 0.65rem;
-    min-height: 120px;
-  }
-
-  .timeline-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.45rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-  }
-
-  .timeline-head .muted {
-    text-transform: none;
-    letter-spacing: 0;
-    font-weight: 400;
-  }
-
-  .tracks {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-  }
-
-  .track-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.65rem;
-    width: 100%;
-    text-align: left;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.4rem 0.55rem;
-    color: var(--text);
-    cursor: pointer;
-  }
-
-  .track-row:hover {
-    background: var(--surface-2);
-  }
-
-  .track-row.selected {
-    border-color: var(--accent);
-  }
-
-  .track-name {
-    flex: 0 0 2.2rem;
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: var(--muted);
-  }
-
-  .track-clips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-    align-items: center;
-    min-width: 0;
-  }
-
-  .clip-chip {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.15em 0.45em;
-    font-size: 0.8rem;
-    color: var(--text);
-    max-width: 12rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .clip-chip:hover:not(:disabled) {
-    background: #2c2c34;
-  }
-
-  .clip-chip.active {
-    border-color: var(--accent);
-    background: rgba(91, 140, 255, 0.18);
   }
 
   @media (max-width: 800px) {

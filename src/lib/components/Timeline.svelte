@@ -1,0 +1,663 @@
+<script lang="ts">
+  import { onDestroy, onMount } from "svelte";
+  import {
+    addTrack,
+    deleteClip,
+    moveClip,
+    splitClip,
+    trimClipIn,
+    trimClipOut,
+  } from "$lib/clips";
+  import { clipDuration, projectDuration } from "$lib/project";
+  import { clamp, formatTimestamp } from "$lib/time";
+  import type { Project } from "$lib/types";
+  import {
+    app,
+    basename,
+    commitProject,
+    project,
+    setPlayhead,
+  } from "../../state/appState.svelte";
+
+  const TRACK_H = 40;
+  const RULER_H = 28;
+  const EDGE_PX = 7;
+  const MIN_PPS = 6;
+  const MAX_PPS = 240;
+  const DEFAULT_PPS = 48;
+
+  let pxPerSecond = $state(DEFAULT_PPS);
+  let scrollEl: HTMLDivElement | undefined = $state();
+  let lanesEl: HTMLDivElement | undefined = $state();
+
+  type DragKind = "move" | "trim-in" | "trim-out";
+
+  let dragKind: DragKind | null = null;
+  /** Reactive so `.dragging` class updates during pointer capture. */
+  let dragClipId = $state<string | null>(null);
+  let dragBefore: Project | null = null;
+  let dragOriginX = 0;
+  let dragOriginY = 0;
+  let startTimelineStart = 0;
+  let startSourceIn = 0;
+  let startSourceOut = 0;
+  let startTrackId = "";
+  let didMove = false;
+  let pointerId: number | null = null;
+
+  const p = $derived(project());
+  const endTime = $derived(Math.max(projectDuration(p), app.playhead, 10));
+  const contentWidth = $derived(Math.ceil(endTime * pxPerSecond) + 48);
+  /** Highest priority (last array index) at top of UI. */
+  const displayTracks = $derived([...p.tracks].reverse());
+  const clipCount = $derived(p.tracks.reduce((n, t) => n + t.clips.length, 0));
+
+  function tickStep(pps: number): number {
+    if (pps >= 100) return 0.5;
+    if (pps >= 40) return 1;
+    if (pps >= 20) return 2;
+    if (pps >= 10) return 5;
+    return 10;
+  }
+
+  const ticks = $derived.by(() => {
+    const step = tickStep(pxPerSecond);
+    const out: number[] = [];
+    for (let t = 0; t <= endTime + 1e-9; t += step) {
+      out.push(Math.round(t * 1000) / 1000);
+    }
+    return out;
+  });
+
+  function setPresentLive(next: Project) {
+    app.history = { ...app.history, present: next };
+    app.dirty = true;
+  }
+
+  function trackIdAtClientY(clientY: number): string | null {
+    if (!lanesEl) return null;
+    const rows = lanesEl.querySelectorAll<HTMLElement>("[data-track-id]");
+    for (const row of rows) {
+      const r = row.getBoundingClientRect();
+      if (clientY >= r.top && clientY < r.bottom) {
+        return row.dataset.trackId ?? null;
+      }
+    }
+    if (rows.length === 0) return null;
+    const first = rows[0].getBoundingClientRect();
+    const last = rows[rows.length - 1].getBoundingClientRect();
+    if (clientY < first.top) return rows[0].dataset.trackId ?? null;
+    if (clientY >= last.bottom) return rows[rows.length - 1].dataset.trackId ?? null;
+    return null;
+  }
+
+  function clientXToTime(clientX: number): number {
+    if (!scrollEl) return 0;
+    const rect = scrollEl.getBoundingClientRect();
+    const x = clientX - rect.left + scrollEl.scrollLeft;
+    return Math.max(0, x / pxPerSecond);
+  }
+
+  function selectClip(clipId: string, trackId: string) {
+    app.selectedClipId = clipId;
+    app.selectedTrackId = trackId;
+  }
+
+  function selectTrack(trackId: string) {
+    app.selectedTrackId = trackId;
+  }
+
+  function onRulerPointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    setPlayhead(clientXToTime(e.clientX));
+  }
+
+  function onLaneBackgroundPointerDown(e: PointerEvent, trackId: string) {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest(".clip")) return;
+    selectTrack(trackId);
+    setPlayhead(clientXToTime(e.clientX));
+  }
+
+  function onClipPointerDown(e: PointerEvent, clipId: string, trackId: string) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    const target = e.target as HTMLElement;
+    const edge = target.dataset.edge as "in" | "out" | undefined;
+    const foundClip = p.tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
+    if (!foundClip) return;
+
+    selectClip(clipId, trackId);
+
+    dragKind = edge === "in" ? "trim-in" : edge === "out" ? "trim-out" : "move";
+    dragClipId = clipId;
+    dragBefore = structuredClone(project());
+    dragOriginX = e.clientX;
+    dragOriginY = e.clientY;
+    startTimelineStart = foundClip.timelineStart;
+    startSourceIn = foundClip.sourceIn;
+    startSourceOut = foundClip.sourceOut;
+    startTrackId = trackId;
+    didMove = false;
+    pointerId = e.pointerId;
+
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onClipPointerMove(e: PointerEvent) {
+    if (!dragKind || !dragClipId || !dragBefore) return;
+    if (pointerId !== null && e.pointerId !== pointerId) return;
+
+    const dx = e.clientX - dragOriginX;
+    const dy = e.clientY - dragOriginY;
+    if (!didMove && Math.hypot(dx, dy) < 3) return;
+    didMove = true;
+
+    const dt = dx / pxPerSecond;
+
+    if (dragKind === "move") {
+      const newStart = Math.max(0, startTimelineStart + dt);
+      const toTrackId = trackIdAtClientY(e.clientY) ?? startTrackId;
+      setPresentLive(moveClip(dragBefore, dragClipId, newStart, toTrackId));
+      if (toTrackId) app.selectedTrackId = toTrackId;
+      return;
+    }
+
+    if (dragKind === "trim-in") {
+      setPresentLive(trimClipIn(dragBefore, dragClipId, startSourceIn + dt));
+      return;
+    }
+
+    if (dragKind === "trim-out") {
+      setPresentLive(trimClipOut(dragBefore, dragClipId, startSourceOut + dt));
+    }
+  }
+
+  function finishDrag(e: PointerEvent) {
+    if (!dragKind || !dragClipId || !dragBefore) return;
+    if (pointerId !== null && e.pointerId !== pointerId) return;
+
+    const before = dragBefore;
+    const after = project();
+    const kind = dragKind;
+
+    dragKind = null;
+    dragClipId = null;
+    dragBefore = null;
+    pointerId = null;
+
+    if (!didMove) {
+      // Click only — present never mutated
+      return;
+    }
+
+    // One undo entry: past ← before, present stays after
+    app.history = {
+      past: [...app.history.past, before].slice(-50),
+      present: after,
+      future: [],
+    };
+    app.dirty = true;
+    app.status =
+      kind === "move" ? "Moved clip" : kind === "trim-in" ? "Trimmed in" : "Trimmed out";
+  }
+
+  function onClipPointerUp(e: PointerEvent) {
+    finishDrag(e);
+  }
+
+  function onClipPointerCancel(e: PointerEvent) {
+    // Revert live edits if cancelled mid-drag
+    if (dragBefore && didMove) {
+      app.history = { ...app.history, present: dragBefore };
+    }
+    dragKind = null;
+    dragClipId = null;
+    dragBefore = null;
+    pointerId = null;
+    didMove = false;
+  }
+
+  function onAddTrack() {
+    const next = addTrack(project());
+    const newTrack = next.tracks[next.tracks.length - 1];
+    commitProject(next);
+    if (newTrack) {
+      app.selectedTrackId = newTrack.id;
+      app.selectedClipId = null;
+    }
+    app.status = `Added ${newTrack?.name ?? "track"}`;
+  }
+
+  function onZoomInput(e: Event) {
+    pxPerSecond = clamp(Number((e.target as HTMLInputElement).value), MIN_PPS, MAX_PPS);
+  }
+
+  function onWheel(e: WheelEvent) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.9 : 1.1;
+    pxPerSecond = clamp(pxPerSecond * factor, MIN_PPS, MAX_PPS);
+  }
+
+  function isTypingTarget(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    const tag = el?.tagName?.toLowerCase();
+    return tag === "input" || tag === "textarea" || tag === "select" || !!el?.isContentEditable;
+  }
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (isTypingTarget(e.target)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    if (e.key === "Delete" || e.key === "Backspace") {
+      const id = app.selectedClipId;
+      if (!id) return;
+      e.preventDefault();
+      const next = deleteClip(project(), id);
+      if (next === project()) return;
+      commitProject(next);
+      app.selectedClipId = null;
+      app.status = "Deleted clip";
+      return;
+    }
+
+    if (e.key === "s" || e.key === "S") {
+      const id = app.selectedClipId;
+      if (!id) return;
+      e.preventDefault();
+      const next = splitClip(project(), id, app.playhead);
+      if (next === project()) {
+        app.status = "Playhead not inside selected clip";
+        return;
+      }
+      commitProject(next);
+      app.status = "Split clip";
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener("keydown", onKeyDown);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener("keydown", onKeyDown);
+  });
+</script>
+
+<section class="timeline" aria-label="Timeline">
+  <div class="timeline-head">
+    <div class="head-left">
+      <span class="title">Timeline</span>
+      <span class="muted">
+        {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
+        · {clipCount} clip{clipCount === 1 ? "" : "s"}
+        · top = highest priority
+      </span>
+    </div>
+    <div class="head-right">
+      <label class="zoom">
+        <span class="muted">Zoom</span>
+        <input
+          type="range"
+          min={MIN_PPS}
+          max={MAX_PPS}
+          step="1"
+          value={pxPerSecond}
+          oninput={onZoomInput}
+          aria-label="Timeline zoom pixels per second"
+        />
+        <span class="mono muted">{Math.round(pxPerSecond)} px/s</span>
+      </label>
+      <button type="button" class="ghost" onclick={onAddTrack}>+ Track</button>
+    </div>
+  </div>
+
+  <div class="timeline-body">
+    <div class="labels" style:padding-top="{RULER_H}px">
+      {#each displayTracks as track (track.id)}
+        <div
+          class="label-row"
+          class:selected={track.id === app.selectedTrackId}
+          style:height="{TRACK_H}px"
+          role="button"
+          tabindex="0"
+          title="Select track {track.name}"
+          onclick={() => selectTrack(track.id)}
+          onkeydown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              selectTrack(track.id);
+            }
+          }}
+        >
+          {track.name}
+        </div>
+      {/each}
+    </div>
+
+    <div
+      class="scroll"
+      bind:this={scrollEl}
+      onwheel={onWheel}
+    >
+      <div class="content" style:width="{contentWidth}px">
+        <!-- Ruler -->
+        <div
+          class="ruler"
+          style:height="{RULER_H}px"
+          role="slider"
+          tabindex="0"
+          aria-label="Timeline ruler"
+          aria-valuemin={0}
+          aria-valuemax={endTime}
+          aria-valuenow={app.playhead}
+          aria-valuetext={formatTimestamp(app.playhead)}
+          onpointerdown={onRulerPointerDown}
+        >
+          {#each ticks as t (t)}
+            <div class="tick" style:left="{t * pxPerSecond}px">
+              <span class="tick-label">{formatTimestamp(t)}</span>
+            </div>
+          {/each}
+        </div>
+
+        <!-- Tracks / clips -->
+        <div class="lanes" bind:this={lanesEl} style:min-height="{displayTracks.length * TRACK_H}px">
+          {#each displayTracks as track (track.id)}
+            <div
+              class="lane"
+              class:selected={track.id === app.selectedTrackId}
+              data-track-id={track.id}
+              style:height="{TRACK_H}px"
+              role="presentation"
+              onpointerdown={(e) => onLaneBackgroundPointerDown(e, track.id)}
+            >
+              {#each track.clips as clip (clip.id)}
+                {@const dur = clipDuration(clip)}
+                {@const left = clip.timelineStart * pxPerSecond}
+                {@const width = Math.max(dur * pxPerSecond, 4)}
+                <div
+                  class="clip"
+                  class:active={clip.id === app.selectedClipId}
+                  class:dragging={dragClipId === clip.id}
+                  style:left="{left}px"
+                  style:width="{width}px"
+                  title={clip.sourcePath}
+                  role="button"
+                  tabindex="0"
+                  onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id)}
+                  onpointermove={onClipPointerMove}
+                  onpointerup={onClipPointerUp}
+                  onpointercancel={onClipPointerCancel}
+                  onkeydown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      selectClip(clip.id, track.id);
+                    }
+                  }}
+                >
+                  <span
+                    class="edge in"
+                    data-edge="in"
+                    style:width="{EDGE_PX}px"
+                    aria-hidden="true"
+                  ></span>
+                  <span class="clip-label">{basename(clip.sourcePath)}</span>
+                  <span
+                    class="edge out"
+                    data-edge="out"
+                    style:width="{EDGE_PX}px"
+                    aria-hidden="true"
+                  ></span>
+                </div>
+              {/each}
+            </div>
+          {/each}
+        </div>
+
+        <!-- Playhead -->
+        <div
+          class="playhead"
+          style:left="{app.playhead * pxPerSecond}px"
+          style:height="{RULER_H + displayTracks.length * TRACK_H}px"
+          aria-hidden="true"
+        >
+          <div class="playhead-head"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .timeline {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.45rem 0.55rem 0.55rem;
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+
+  .timeline-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+
+  .head-left,
+  .head-right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  .title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  .muted {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .zoom {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  .zoom input[type="range"] {
+    width: 7rem;
+    accent-color: var(--accent);
+  }
+
+  .timeline-body {
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  .labels {
+    flex: 0 0 auto;
+    width: 52px;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    z-index: 2;
+  }
+
+  .label-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .label-row:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+
+  .label-row.selected {
+    color: var(--accent);
+    background: rgba(91, 140, 255, 0.1);
+  }
+
+  .scroll {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    position: relative;
+  }
+
+  .content {
+    position: relative;
+    min-height: 100%;
+  }
+
+  .ruler {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid var(--border);
+    pointer-events: none;
+  }
+
+  .tick-label {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    font-size: 0.7rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .lanes {
+    position: relative;
+  }
+
+  .lane {
+    position: relative;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .lane.selected {
+    background: rgba(91, 140, 255, 0.04);
+  }
+
+  .clip {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    display: flex;
+    align-items: center;
+    background: rgba(91, 140, 255, 0.28);
+    border: 1px solid rgba(91, 140, 255, 0.55);
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: grab;
+    user-select: none;
+    min-width: 4px;
+    box-sizing: border-box;
+  }
+
+  .clip:hover {
+    background: rgba(91, 140, 255, 0.38);
+  }
+
+  .clip.active {
+    border-color: var(--accent);
+    background: rgba(91, 140, 255, 0.48);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .clip.dragging {
+    cursor: grabbing;
+    opacity: 0.92;
+    z-index: 2;
+  }
+
+  .clip-label {
+    flex: 1;
+    min-width: 0;
+    padding: 0 0.35rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
+
+  .edge {
+    flex: 0 0 auto;
+    align-self: stretch;
+    cursor: ew-resize;
+    background: transparent;
+    z-index: 1;
+  }
+
+  .edge:hover,
+  .edge:active {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .playhead {
+    position: absolute;
+    top: 0;
+    width: 0;
+    border-left: 2px solid var(--danger);
+    pointer-events: none;
+    z-index: 4;
+  }
+
+  .playhead-head {
+    position: absolute;
+    top: 0;
+    left: -5px;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 8px solid var(--danger);
+  }
+</style>
