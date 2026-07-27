@@ -18,6 +18,9 @@
   /** Viewport zoom limits (wheel / trackpad). */
   const VIEW_ZOOM_MIN = 0.25;
   const VIEW_ZOOM_MAX = 8;
+  /** Clip transform scale limits (Shift+drag). */
+  const CLIP_SCALE_MIN = 0.05;
+  const CLIP_SCALE_MAX = 8;
   /** Near end of trimmed source — treat as clip finished. */
   const CLIP_END_EPS = 1 / 30;
   /** Start warming the next clip this many seconds before the cut. */
@@ -52,16 +55,20 @@
   /** Hold last painted frame across cuts instead of flashing black. */
   let holdFrame = false;
 
-  // Clip transform pan drag (single undo entry on pointerup)
+  // Clip transform drag (pan or Shift+scale; single undo entry on pointerup)
+  type ClipDragMode = "pan" | "scale";
   let dragClipId: string | null = null;
   let dragBefore: Project | null = null;
+  let dragMode: ClipDragMode = "pan";
   let dragStartX = 0;
   let dragStartY = 0;
+  let dragStartScale = 1;
   let dragOriginClientX = 0;
   let dragOriginClientY = 0;
   let dragPointerId: number | null = null;
   let dragDidMove = false;
   let dragging = $state(false);
+  let scaling = $state(false);
 
   // Viewport camera (UI only — not project data)
   let viewportEl: HTMLDivElement | undefined = $state();
@@ -668,9 +675,18 @@
   function clearDrag() {
     dragClipId = null;
     dragBefore = null;
+    dragMode = "pan";
     dragPointerId = null;
     dragDidMove = false;
     dragging = false;
+    scaling = false;
+  }
+
+  /** Selected clip, or topmost (hard-cut winner) at the playhead. */
+  function transformTargetClip(): Clip | null {
+    const sel = selectedClip();
+    if (sel) return sel;
+    return clipAtTime(project(), app.playhead)?.clip ?? null;
   }
 
   function startViewPan(e: PointerEvent) {
@@ -703,7 +719,7 @@
 
   function onPointerDown(e: PointerEvent) {
     // Middle mouse, or Alt/Option+left: pan the viewport
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    if (e.button === 1 || (e.button === 0 && e.altKey && !e.shiftKey)) {
       if (dragClipId) {
         detachDragListeners();
         clearDrag();
@@ -713,9 +729,11 @@
     }
     if (e.button !== 0) return;
 
-    const clip = selectedClip();
+    // Shift+drag: scale selected clip, or topmost under playhead
+    const scaleMode = e.shiftKey;
+    const clip = scaleMode ? transformTargetClip() : selectedClip();
     if (!clip) {
-      // Empty selection: left-drag pans the view
+      // No clip to transform: left-drag pans the view
       startViewPan(e);
       return;
     }
@@ -730,15 +748,23 @@
       clearDrag();
     }
 
+    // Promote topmost to selection when Shift-scaling without a selection
+    if (scaleMode && app.selectedClipId !== clip.id) {
+      app.selectedClipId = clip.id;
+    }
+
     dragClipId = clip.id;
+    dragMode = scaleMode ? "scale" : "pan";
     dragBefore = cloneProject(project());
     dragStartX = clip.transform.x;
     dragStartY = clip.transform.y;
+    dragStartScale = clip.transform.scale;
     dragOriginClientX = e.clientX;
     dragOriginClientY = e.clientY;
     dragPointerId = e.pointerId;
     dragDidMove = false;
-    dragging = true;
+    dragging = dragMode === "pan";
+    scaling = dragMode === "scale";
 
     window.addEventListener("pointermove", onWindowPointerMove);
     window.addEventListener("pointerup", onWindowPointerUp);
@@ -749,15 +775,34 @@
     if (!dragClipId || !dragBefore) return;
     if (dragPointerId !== null && e.pointerId !== dragPointerId) return;
 
-    const { sx, sy } = canvasScale();
-    const dx = (e.clientX - dragOriginClientX) * sx;
-    const dy = (e.clientY - dragOriginClientY) * sy;
-    if (!dragDidMove && Math.hypot(dx, dy) < 2) return;
+    const clientDx = e.clientX - dragOriginClientX;
+    const clientDy = e.clientY - dragOriginClientY;
+    if (!dragDidMove && Math.hypot(clientDx, clientDy) < 2) return;
     dragDidMove = true;
 
     const found = findClip(dragBefore, dragClipId);
     if (!found) return;
 
+    if (dragMode === "scale") {
+      // Right / up grows; exponential so fine near 1× and usable far out
+      const delta = clientDx - clientDy;
+      const scale = clamp(
+        dragStartScale * Math.exp(delta * 0.004),
+        CLIP_SCALE_MIN,
+        CLIP_SCALE_MAX,
+      );
+      const transform: ClipTransform = {
+        ...found.clip.transform,
+        scale,
+      };
+      setPresentLive(applyClipTransform(dragBefore, dragClipId, transform));
+      paint();
+      return;
+    }
+
+    const { sx, sy } = canvasScale();
+    const dx = clientDx * sx;
+    const dy = clientDy * sy;
     const transform: ClipTransform = {
       ...found.clip.transform,
       x: dragStartX + dx,
@@ -774,6 +819,7 @@
     const before = dragBefore;
     const after = project();
     const moved = dragDidMove;
+    const mode = dragMode;
 
     detachDragListeners();
     clearDrag();
@@ -786,7 +832,7 @@
       future: [],
     };
     app.dirty = true;
-    app.status = "Moved transform";
+    app.status = mode === "scale" ? "Scaled transform" : "Moved transform";
     paint();
   }
 
@@ -875,6 +921,7 @@
         height={canvasH}
         class:interactive={canTransform}
         class:dragging
+        class:scaling
         onpointerdown={onPointerDown}
       ></canvas>
     </div>
@@ -946,6 +993,10 @@
 
   canvas.dragging {
     cursor: grabbing;
+  }
+
+  canvas.scaling {
+    cursor: nwse-resize;
   }
 
   .view-hud {
