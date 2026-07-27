@@ -4,6 +4,7 @@
     canvasHeight: number;
     dirty: boolean;
     exporting: boolean;
+    canExport: boolean;
     canUndo: boolean;
     canRedo: boolean;
     onNew: () => void;
@@ -22,6 +23,7 @@
     canvasHeight,
     dirty,
     exporting,
+    canExport,
     canUndo,
     canRedo,
     onNew,
@@ -75,7 +77,18 @@
 
   <div class="group">
     <button type="button" class="ghost" onclick={onImport}>Import</button>
-    <button type="button" onclick={onExport} disabled={exporting}>Export</button>
+    <button
+      type="button"
+      onclick={onExport}
+      disabled={!canExport}
+      title={exporting
+        ? "Export in progress"
+        : !canExport
+          ? "Needs ffmpeg and at least one clip"
+          : "Export H.264+AAC MP4"}
+    >
+      {exporting ? "Exporting…" : "Export"}
+    </button>
   </div>
 
   <div class="group">

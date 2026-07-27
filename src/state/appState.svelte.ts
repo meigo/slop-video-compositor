@@ -1,4 +1,5 @@
 import { addClip, findClip } from "$lib/clips";
+import { toExportOpts } from "$lib/exportPayload";
 import {
   canRedo,
   canUndo,
@@ -16,11 +17,15 @@ import {
 } from "$lib/project";
 import {
   checkDeps,
+  defaultExportDir,
+  exportProject,
   loadSettings,
   openProjectFile,
+  pickExportPath,
   pickVideoFile,
   pickVideoFiles,
   probeMedia,
+  revealInFolder,
   saveProjectFileAs,
   saveSettings,
   toSourceMeta,
@@ -34,6 +39,7 @@ import type {
   Project,
   SourceMeta,
 } from "$lib/types";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 function initialProject(): Project {
   return createProject();
@@ -262,13 +268,124 @@ export async function importVideos() {
   }
 }
 
-export function exportStub() {
+/** True when export is allowed (ffmpeg present, timeline non-empty, not mid-export). */
+export function canExport(): boolean {
+  if (app.exporting) return false;
+  if (app.deps && !app.deps.ffmpeg) return false;
+  const p = project();
+  if (projectDuration(p) <= 0) return false;
+  return p.tracks.some((t) => t.clips.length > 0);
+}
+
+function joinPath(dir: string, file: string): string {
+  const sep = dir.includes("\\") && !dir.includes("/") ? "\\" : "/";
+  return dir.endsWith("/") || dir.endsWith("\\") ? `${dir}${file}` : `${dir}${sep}${file}`;
+}
+
+function safeExportName(name: string): string {
+  const base = name.trim() || "export";
+  return base.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").slice(0, 80) + ".mp4";
+}
+
+type ProgressPayload = { phase: string; message: string; pct: number | null };
+
+/** Validate sources, pick path, export via ffmpeg, reveal on success. */
+export async function exportVideo() {
   if (app.exporting) return;
   if (app.deps && !app.deps.ffmpeg) {
     app.status = "Export requires ffmpeg";
     return;
   }
-  app.status = "Export not implemented yet";
+
+  const p = project();
+  if (projectDuration(p) <= 0 || !p.tracks.some((t) => t.clips.length > 0)) {
+    app.status = "Nothing to export — add clips first";
+    return;
+  }
+
+  const paths = new Set<string>();
+  for (const track of p.tracks) {
+    for (const clip of track.clips) {
+      paths.add(clip.sourcePath);
+    }
+  }
+
+  const missing: string[] = [];
+  const nextMeta = new Map(app.metaByPath);
+  for (const path of paths) {
+    if (nextMeta.has(path)) continue;
+    try {
+      const media = await probeMedia(path);
+      nextMeta.set(path, toSourceMeta(path, media));
+    } catch {
+      missing.push(path);
+    }
+  }
+  if (missing.length > 0) {
+    app.metaByPath = nextMeta;
+    const list = missing.map(basename).join(", ");
+    app.status = `Missing sources (${missing.length}): ${list}`;
+    return;
+  }
+  app.metaByPath = nextMeta;
+
+  let dir = app.lastExportDir;
+  if (!dir) {
+    try {
+      dir = await defaultExportDir();
+    } catch {
+      dir = null;
+    }
+  }
+  const suggested = dir ? joinPath(dir, safeExportName(p.name)) : safeExportName(p.name);
+
+  let outputPath: string | null;
+  try {
+    outputPath = await pickExportPath(suggested);
+  } catch (e) {
+    app.status = `Export dialog failed: ${errMsg(e)}`;
+    return;
+  }
+  if (!outputPath) return;
+  if (!outputPath.toLowerCase().endsWith(".mp4")) {
+    outputPath = `${outputPath}.mp4`;
+  }
+
+  let unlisten: UnlistenFn | null = null;
+  app.exporting = true;
+  app.status = "Exporting…";
+  try {
+    unlisten = await listen<ProgressPayload>("export-progress", (event) => {
+      const { phase, message, pct } = event.payload;
+      if (pct != null && Number.isFinite(pct)) {
+        app.status = `Export ${phase}: ${message} (${Math.round(pct * 100)}%)`;
+      } else {
+        app.status = `Export ${phase}: ${message}`;
+      }
+    });
+
+    const opts = toExportOpts(p, app.metaByPath, outputPath);
+    const result = await exportProject(opts);
+    app.lastExportDir = dirname(result.output_path);
+    await persistSettings();
+    try {
+      await revealInFolder(result.output_path);
+    } catch {
+      // non-fatal
+    }
+    app.status = `Exported ${basename(result.output_path)}`;
+  } catch (e) {
+    app.status = `Export failed: ${errMsg(e)}`;
+  } finally {
+    if (unlisten) {
+      try {
+        unlisten();
+      } catch {
+        // ignore
+      }
+    }
+    app.exporting = false;
+  }
 }
 
 export function setCanvasSize(width: number, height: number) {

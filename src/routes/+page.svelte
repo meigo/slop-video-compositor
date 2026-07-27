@@ -10,10 +10,11 @@
   import {
     app,
     basename,
+    canExport,
     canRedo,
     canUndo,
     duration,
-    exportStub,
+    exportVideo,
     importVideos,
     initApp,
     newProject,
@@ -39,6 +40,7 @@
   const dur = $derived(duration());
   const undoOk = $derived(canUndo(app.history));
   const redoOk = $derived(canRedo(app.history));
+  const exportOk = $derived(canExport());
 
   function togglePlay() {
     if (!app.playing) {
@@ -115,6 +117,7 @@
     canvasHeight={p.canvas.height}
     dirty={app.dirty}
     exporting={app.exporting}
+    canExport={exportOk}
     canUndo={undoOk}
     canRedo={redoOk}
     onNew={newProject}
@@ -122,7 +125,7 @@
     onSave={() => void saveProject()}
     onSaveAs={() => void saveProjectAs()}
     onImport={() => void importVideos()}
-    onExport={exportStub}
+    onExport={() => void exportVideo()}
     onUndo={undo}
     onRedo={redo}
     onCanvasChange={setCanvasSize}
