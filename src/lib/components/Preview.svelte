@@ -92,11 +92,13 @@
   /**
    * Base layout centers the stage in the viewport (left/top 50% + negative half margins).
    * Camera then only applies pan + zoom about the stage center.
+   * Aspect ratio is locked to the project canvas (contain-fit).
    */
   const stageStyle = $derived(
     `width:${viewFitW}px;height:${viewFitH}px;` +
       `margin-left:${-viewFitW / 2}px;margin-top:${-viewFitH / 2}px;` +
-      `transform:translate(${viewPanX}px,${viewPanY}px) scale(${viewZoom});`,
+      `transform:translate(${viewPanX}px,${viewPanY}px) scale(${viewZoom});` +
+      `aspect-ratio:${canvasW} / ${canvasH};`,
   );
 
   function activeSlot(): Slot {
@@ -625,14 +627,27 @@
     paint();
   });
 
-  /** Contain-fit project canvas into the viewport chrome (zoom=1 size). */
+  /**
+   * Contain-fit project canvas into the viewport (zoom=1 size).
+   * Preserves exact project aspect ratio (no nonuniform stretch).
+   * Leaves a small margin so the output frame is clearly inset from the panel edge.
+   */
   function updateViewFit() {
     if (!viewportEl) return;
-    const vw = Math.max(1, viewportEl.clientWidth);
-    const vh = Math.max(1, viewportEl.clientHeight);
+    const pad = 16; // inset so the frame border is always visible
+    const vw = Math.max(1, viewportEl.clientWidth - pad * 2);
+    const vh = Math.max(1, viewportEl.clientHeight - pad * 2);
     const s = Math.min(vw / canvasW, vh / canvasH);
-    viewFitW = Math.max(1, Math.floor(canvasW * s));
-    viewFitH = Math.max(1, Math.floor(canvasH * s));
+    // Floor the longer side, then derive the other from aspect for pixel-stable ratios
+    const aspect = canvasW / canvasH;
+    let w = Math.max(1, Math.floor(canvasW * s));
+    let h = Math.max(1, Math.round(w / aspect));
+    if (h > vh) {
+      h = Math.max(1, Math.floor(canvasH * s));
+      w = Math.max(1, Math.round(h * aspect));
+    }
+    viewFitW = w;
+    viewFitH = h;
   }
 
   $effect(() => {
@@ -927,25 +942,30 @@
     role="presentation"
   >
     <div class="stage" style={stageStyle}>
-      <canvas
-        bind:this={canvasEl}
-        width={canvasW}
-        height={canvasH}
-        class:interactive={canTransform}
-        class:dragging
-        class:scaling
-        onpointerdown={onPointerDown}
-      ></canvas>
+      <div class="output-frame" title="Output {canvasW}×{canvasH}">
+        <canvas
+          bind:this={canvasEl}
+          width={canvasW}
+          height={canvasH}
+          class:interactive={canTransform}
+          class:dragging
+          class:scaling
+          onpointerdown={onPointerDown}
+        ></canvas>
+        <div class="frame-label mono" aria-hidden="true">{canvasW}×{canvasH}</div>
+      </div>
     </div>
   </div>
-  {#if viewZoom !== 1 || viewPanX !== 0 || viewPanY !== 0}
-    <div class="view-hud" aria-hidden="true">
+  <div class="view-hud">
+    {#if viewZoom !== 1 || viewPanX !== 0 || viewPanY !== 0}
       <span class="mono">{Math.round(viewZoom * 100)}%</span>
-      <button type="button" class="ghost fit-btn" onclick={resetViewport} title="Fit viewport (double-click)">
+      <button type="button" class="ghost fit-btn" onclick={resetViewport} title="Fit & center (double-click)">
         Fit
       </button>
-    </div>
-  {/if}
+    {:else}
+      <span class="mono muted-hud">fit</span>
+    {/if}
+  </div>
   <!-- Dual decoders: active free-runs, standby prefetches the next cut -->
   <!-- svelte-ignore a11y_media_has_caption -->
   <video bind:this={videoA} class="decoder" playsinline preload="auto"></video>
@@ -975,7 +995,19 @@
     overflow: hidden;
     touch-action: none;
     cursor: grab;
-    background: #0a0a0c;
+    /* Chrome outside the output frame — not pure black so the project rect reads clearly */
+    background-color: #1a1a1e;
+    background-image:
+      linear-gradient(45deg, #222228 25%, transparent 25%),
+      linear-gradient(-45deg, #222228 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #222228 75%),
+      linear-gradient(-45deg, transparent 75%, #222228 75%);
+    background-size: 16px 16px;
+    background-position:
+      0 0,
+      0 8px,
+      8px -8px,
+      -8px 0;
   }
 
   .viewport.panning {
@@ -988,12 +1020,44 @@
     top: 50%;
     transform-origin: center center;
     will-change: transform;
+    /* Lock box sizing so aspect-ratio + explicit size stay consistent */
+    box-sizing: border-box;
+  }
+
+  .output-frame {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    /* Clear “this is the export rectangle” chrome */
+    outline: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.65),
+      0 8px 28px rgba(0, 0, 0, 0.45);
+    background: #000;
+    overflow: hidden;
+  }
+
+  .frame-label {
+    position: absolute;
+    top: 0.3rem;
+    left: 0.35rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.55);
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.65rem;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+    z-index: 1;
   }
 
   canvas {
     display: block;
     width: 100%;
     height: 100%;
+    /* Project pixels only — no letterbox stretch */
+    object-fit: fill;
     background: #000;
     cursor: default;
     touch-action: none;
@@ -1032,6 +1096,11 @@
     min-width: 2.5rem;
     text-align: right;
     color: var(--text);
+  }
+
+  .view-hud .muted-hud {
+    opacity: 0.7;
+    min-width: auto;
   }
 
   .fit-btn {
