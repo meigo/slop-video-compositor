@@ -88,9 +88,14 @@
   const canvasW = $derived(Math.max(1, Math.round(p.canvas.width)));
   const canvasH = $derived(Math.max(1, Math.round(p.canvas.height)));
   const canTransform = $derived(!!selectedClip());
+  /**
+   * Base layout centers the stage in the viewport (left/top 50% + negative half margins).
+   * Camera then only applies pan + zoom about the stage center.
+   */
   const stageStyle = $derived(
     `width:${viewFitW}px;height:${viewFitH}px;` +
-      `transform:translate(calc(-50% + ${viewPanX}px),calc(-50% + ${viewPanY}px)) scale(${viewZoom});`,
+      `margin-left:${-viewFitW / 2}px;margin-top:${-viewFitH / 2}px;` +
+      `transform:translate(${viewPanX}px,${viewPanY}px) scale(${viewZoom});`,
   );
 
   function activeSlot(): Slot {
@@ -643,7 +648,9 @@
     return () => ro.disconnect();
   });
 
+  /** Contain-fit project size into the viewport and center the camera. */
   function resetViewport() {
+    updateViewFit();
     viewZoom = 1;
     viewPanX = 0;
     viewPanY = 0;
