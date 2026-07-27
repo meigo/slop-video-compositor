@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import Inspector from "$lib/components/Inspector.svelte";
   import MissingDeps from "$lib/components/MissingDeps.svelte";
+  import Preview from "$lib/components/Preview.svelte";
   import StatusLine from "$lib/components/StatusLine.svelte";
   import Timeline from "$lib/components/Timeline.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
@@ -40,6 +41,12 @@
   const redoOk = $derived(canRedo(app.history));
 
   function togglePlay() {
+    if (!app.playing) {
+      const d = duration();
+      if (d > 0 && app.playhead >= d) {
+        setPlayhead(0);
+      }
+    }
     app.playing = !app.playing;
     app.status = app.playing ? "Playing" : "Paused";
   }
@@ -130,11 +137,7 @@
 
   <div class="main">
     <section class="preview-col" aria-label="Preview">
-      <div class="preview-placeholder">
-        <p>Preview</p>
-        <p class="muted">{p.canvas.width}×{p.canvas.height} · playhead {app.playhead.toFixed(2)}s</p>
-        <p class="muted">Full preview lands in a later task</p>
-      </div>
+      <Preview />
       <Transport
         playhead={app.playhead}
         duration={dur}
@@ -180,30 +183,6 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-  }
-
-  .preview-placeholder {
-    flex: 1;
-    min-height: 200px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.25rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    text-align: center;
-    padding: 1rem;
-  }
-
-  .preview-placeholder p {
-    margin: 0;
-  }
-
-  .muted {
-    color: var(--muted);
-    font-size: 0.85rem;
   }
 
   @media (max-width: 800px) {
