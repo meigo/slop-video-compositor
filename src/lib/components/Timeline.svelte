@@ -48,6 +48,10 @@
   let didMove = false;
   let pointerId: number | null = null;
 
+  /** Ruler / playhead / empty-lane scrub (separate from clip drag). */
+  let scrubbing = $state(false);
+  let scrubPointerId: number | null = null;
+
   const p = $derived(project());
   const endTime = $derived(Math.max(projectDuration(p), app.playhead, 10));
   const contentWidth = $derived(Math.ceil(endTime * pxPerSecond) + 48);
@@ -101,6 +105,11 @@
     return Math.max(0, x / pxPerSecond);
   }
 
+  function seekFromClientX(clientX: number) {
+    // Allow scrub past last clip into empty space (endTime grows with playhead).
+    setPlayhead(clientXToTime(clientX));
+  }
+
   function selectClip(clipId: string, trackId: string) {
     app.selectedClipId = clipId;
     app.selectedTrackId = trackId;
@@ -131,17 +140,64 @@
     didMove = false;
   }
 
-  function onRulerPointerDown(e: PointerEvent) {
+  function detachScrubListeners() {
+    window.removeEventListener("pointermove", onScrubPointerMove);
+    window.removeEventListener("pointerup", onScrubPointerUp);
+    window.removeEventListener("pointercancel", onScrubPointerUp);
+  }
+
+  function endScrub() {
+    scrubbing = false;
+    scrubPointerId = null;
+    detachScrubListeners();
+  }
+
+  function startScrub(e: PointerEvent) {
     if (e.button !== 0) return;
-    setPlayhead(clientXToTime(e.clientX));
+    // Don't fight an active clip drag
+    if (dragKind) return;
+    // Restart if already scrubbing (e.g. second finger)
+    if (scrubbing) endScrub();
+
+    e.preventDefault();
+    scrubbing = true;
+    scrubPointerId = e.pointerId;
+    // Pause so rAF doesn't fight the scrub
+    app.playing = false;
+    seekFromClientX(e.clientX);
+
+    window.addEventListener("pointermove", onScrubPointerMove);
+    window.addEventListener("pointerup", onScrubPointerUp);
+    window.addEventListener("pointercancel", onScrubPointerUp);
+  }
+
+  function onScrubPointerMove(e: PointerEvent) {
+    if (!scrubbing) return;
+    if (scrubPointerId !== null && e.pointerId !== scrubPointerId) return;
+    seekFromClientX(e.clientX);
+  }
+
+  function onScrubPointerUp(e: PointerEvent) {
+    if (scrubPointerId !== null && e.pointerId !== scrubPointerId) return;
+    endScrub();
+  }
+
+  function onRulerPointerDown(e: PointerEvent) {
+    startScrub(e);
+  }
+
+  function onPlayheadPointerDown(e: PointerEvent) {
+    e.stopPropagation();
+    startScrub(e);
   }
 
   function onLaneBackgroundPointerDown(e: PointerEvent, trackId: string) {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest(".clip")) return;
+    if ((e.target as HTMLElement).closest(".playhead")) return;
     selectTrack(trackId);
     app.selectedClipId = null;
-    setPlayhead(clientXToTime(e.clientX));
+    startScrub(e);
   }
 
   function onClipPointerDown(e: PointerEvent, clipId: string, trackId: string) {
@@ -150,6 +206,7 @@
     e.preventDefault();
 
     // End any prior drag cleanly before starting another
+    if (scrubbing) endScrub();
     if (dragKind) {
       detachDragListeners();
       clearDragState();
@@ -321,6 +378,7 @@
   onDestroy(() => {
     window.removeEventListener("keydown", onKeyDown);
     detachDragListeners();
+    endScrub();
   });
 </script>
 
@@ -388,13 +446,14 @@
       onwheel={onWheel}
     >
       <div class="content" style:width="{contentWidth}px">
-        <!-- Ruler -->
+        <!-- Ruler (click + drag to scrub) -->
         <div
           class="ruler"
+          class:scrubbing
           style:height="{RULER_H}px"
           role="slider"
           tabindex="0"
-          aria-label="Timeline ruler"
+          aria-label="Timeline ruler — drag to scrub"
           aria-valuemin={0}
           aria-valuemax={endTime}
           aria-valuenow={app.playhead}
@@ -460,14 +519,32 @@
           {/each}
         </div>
 
-        <!-- Playhead -->
+        <!-- Playhead (drag to scrub) -->
         <div
           class="playhead"
+          class:scrubbing
           style:left="{app.playhead * pxPerSecond}px"
           style:height="{RULER_H + displayTracks.length * TRACK_H}px"
-          aria-hidden="true"
+          role="slider"
+          tabindex="0"
+          aria-label="Playhead — drag to scrub"
+          aria-valuemin={0}
+          aria-valuemax={endTime}
+          aria-valuenow={app.playhead}
+          aria-valuetext={formatTimestamp(app.playhead)}
+          onpointerdown={onPlayheadPointerDown}
+          onkeydown={(e) => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+              e.preventDefault();
+              const step = e.shiftKey ? 1 : 0.1;
+              const delta = e.key === "ArrowLeft" ? -step : step;
+              setPlayhead(Math.max(0, app.playhead + delta));
+              app.playing = false;
+            }
+          }}
         >
-          <div class="playhead-head"></div>
+          <div class="playhead-hit" aria-hidden="true"></div>
+          <div class="playhead-head" aria-hidden="true"></div>
         </div>
       </div>
     </div>
@@ -605,8 +682,13 @@
     z-index: 3;
     background: var(--surface-2);
     border-bottom: 1px solid var(--border);
-    cursor: pointer;
+    cursor: ew-resize;
+    touch-action: none;
     user-select: none;
+  }
+
+  .ruler.scrubbing {
+    cursor: grabbing;
   }
 
   .tick {
@@ -702,8 +784,28 @@
     top: 0;
     width: 0;
     border-left: 2px solid var(--danger);
-    pointer-events: none;
     z-index: 4;
+    cursor: ew-resize;
+    touch-action: none;
+    outline: none;
+  }
+
+  .playhead.scrubbing {
+    cursor: grabbing;
+  }
+
+  .playhead:focus-visible .playhead-hit {
+    background: rgba(240, 113, 120, 0.18);
+  }
+
+  /* Wide invisible hit target for easier grab */
+  .playhead-hit {
+    position: absolute;
+    top: 0;
+    left: -6px;
+    width: 12px;
+    height: 100%;
+    background: transparent;
   }
 
   .playhead-head {
@@ -715,5 +817,6 @@
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
     border-top: 8px solid var(--danger);
+    pointer-events: none;
   }
 </style>
