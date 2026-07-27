@@ -307,8 +307,10 @@ color=c=black:s={can}:d={dur}:r=30[bg];\
     );
 
     let audio = if *has_audio {
+        // Force stereo so concat with anullsrc stereo black segments never fails
+        // on mono (or other non-stereo) source audio.
         format!(
-            "[0:a]atrim=start={start}:duration={dur},asetpts=PTS-STARTPTS,aresample=48000[a]"
+            "[0:a]atrim=start={start}:duration={dur},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
         )
     } else {
         format!("anullsrc=r=48000:cl=stereo,atrim=duration={dur}[a]")
@@ -432,7 +434,9 @@ mod tests {
         assert!(fc.contains("overlay=50:0:shortest=1"), "fc={fc}");
         assert!(fc.contains("format=yuv420p"), "fc={fc}");
         assert!(
-            fc.contains("[0:a]atrim=start=1.5:duration=2,asetpts=PTS-STARTPTS,aresample=48000[a]"),
+            fc.contains(
+                "[0:a]atrim=start=1.5:duration=2,asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
+            ),
             "fc={fc}"
         );
 

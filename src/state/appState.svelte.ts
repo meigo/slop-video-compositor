@@ -388,15 +388,23 @@ export async function exportVideo() {
   }
 }
 
+/** Snap to even integers ≥ 2 so yuv420p / libx264 never sees odd canvas sizes. */
+function evenCanvasDim(n: number): number {
+  if (!Number.isFinite(n) || n < 2) return 2;
+  return Math.max(2, Math.floor(n / 2) * 2);
+}
+
 export function setCanvasSize(width: number, height: number) {
   if (!(width > 0) || !(height > 0)) return;
+  const w = evenCanvasDim(width);
+  const h = evenCanvasDim(height);
   const p = project();
-  if (p.canvas.width === width && p.canvas.height === height) return;
+  if (p.canvas.width === w && p.canvas.height === h) return;
   commitProject({
     ...p,
-    canvas: { width, height },
+    canvas: { width: w, height: h },
   });
-  app.status = `Canvas ${width}×${height}`;
+  app.status = `Canvas ${w}×${h}`;
 }
 
 export function setPlayhead(t: number) {
@@ -425,6 +433,11 @@ export function updateSelectedClipFields(patch: {
   const prev = found.clip;
   let sourceIn = patch.sourceIn ?? prev.sourceIn;
   let sourceOut = patch.sourceOut ?? prev.sourceOut;
+  // When media duration is known, keep sourceOut within the file.
+  const meta = app.metaByPath.get(prev.sourcePath);
+  if (meta && Number.isFinite(meta.duration)) {
+    sourceOut = Math.min(sourceOut, meta.duration);
+  }
   if (!(sourceOut > sourceIn)) return;
 
   const next: Clip = {

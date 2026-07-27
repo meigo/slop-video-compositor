@@ -199,7 +199,15 @@
     }
 
     if (dragKind === "trim-out") {
-      setPresentLive(trimClipOut(dragBefore, dragClipId, startSourceOut + dt));
+      let newOut = startSourceOut + dt;
+      const clip = dragBefore.tracks.flatMap((t) => t.clips).find((c) => c.id === dragClipId);
+      if (clip) {
+        const meta = app.metaByPath.get(clip.sourcePath);
+        if (meta && Number.isFinite(meta.duration)) {
+          newOut = Math.min(newOut, meta.duration);
+        }
+      }
+      setPresentLive(trimClipOut(dragBefore, dragClipId, newOut));
     }
   }
 
