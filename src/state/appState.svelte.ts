@@ -65,6 +65,8 @@ export const app = $state({
   checkingDeps: true,
   lastProjectDir: null as string | null,
   lastExportDir: null as string | null,
+  /** Timeline panel height (px). Default applied in the shell layout. */
+  timelineHeightPx: 200,
 });
 
 export function project(): Project {
@@ -546,11 +548,27 @@ async function persistSettings() {
     const settings: AppSettings = {
       last_export_dir: app.lastExportDir,
       last_project_dir: app.lastProjectDir,
+      timeline_height_px: Math.round(app.timelineHeightPx),
     };
     await saveSettings(settings);
   } catch {
     // non-fatal
   }
+}
+
+const TIMELINE_H_MIN = 120;
+const TIMELINE_H_DEFAULT = 200;
+
+export function clampTimelineHeight(px: number): number {
+  const max = Math.max(TIMELINE_H_MIN, Math.floor(window.innerHeight * 0.6));
+  if (!Number.isFinite(px)) return TIMELINE_H_DEFAULT;
+  return Math.min(max, Math.max(TIMELINE_H_MIN, Math.round(px)));
+}
+
+/** Update timeline panel height and persist (debounced by callers if needed). */
+export function setTimelineHeight(px: number, persist = true) {
+  app.timelineHeightPx = clampTimelineHeight(px);
+  if (persist) void persistSettings();
 }
 
 export async function initApp() {
@@ -559,6 +577,13 @@ export async function initApp() {
     const settings = await loadSettings();
     app.lastExportDir = settings.last_export_dir;
     app.lastProjectDir = settings.last_project_dir;
+    if (
+      settings.timeline_height_px != null &&
+      Number.isFinite(settings.timeline_height_px) &&
+      settings.timeline_height_px > 0
+    ) {
+      app.timelineHeightPx = clampTimelineHeight(settings.timeline_height_px);
+    }
   } catch {
     // defaults
   }

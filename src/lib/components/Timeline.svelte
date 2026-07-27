@@ -738,14 +738,17 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.45rem 0.55rem 0.55rem;
-    min-height: 140px;
+    height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
     min-width: 0;
+    box-sizing: border-box;
   }
 
   .timeline-head {
+    flex: 0 0 auto;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -823,12 +826,16 @@
   }
 
   .timeline-body {
+    flex: 1 1 auto;
     display: flex;
+    align-items: flex-start;
     min-height: 0;
     min-width: 0;
     border: 1px solid var(--border);
     border-radius: 6px;
-    overflow: hidden;
+    /* Vertical scroll when many tracks; horizontal stays in .scroll */
+    overflow-x: hidden;
+    overflow-y: auto;
     background: var(--bg);
   }
 
@@ -838,6 +845,8 @@
     border-right: 1px solid var(--border);
     background: var(--surface);
     z-index: 2;
+    position: sticky;
+    left: 0;
   }
 
   .label-row {
@@ -863,9 +872,11 @@
   }
 
   .scroll {
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
-    overflow: auto;
+    /* Horizontal scrub/zoom only; vertical is on .timeline-body */
+    overflow-x: auto;
+    overflow-y: hidden;
     position: relative;
   }
 

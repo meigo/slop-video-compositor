@@ -41,6 +41,8 @@ export type DepsStatus = {
 export type AppSettings = {
   last_export_dir: string | null;
   last_project_dir: string | null;
+  /** Timeline panel height in CSS pixels (optional; UI preference). */
+  timeline_height_px?: number | null;
 };
 
 /** Wire shape from Rust `probe_media` (no path; caller attaches it). */

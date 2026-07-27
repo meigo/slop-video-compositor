@@ -13,6 +13,7 @@
     canExport,
     canRedo,
     canUndo,
+    clampTimelineHeight,
     duration,
     exportVideo,
     importVideos,
@@ -29,6 +30,7 @@
     selectedMeta,
     setCanvasSize,
     setPlayhead,
+    setTimelineHeight,
     undo,
     redo,
     updateSelectedClipFields,
@@ -41,6 +43,10 @@
   const undoOk = $derived(canUndo(app.history));
   const redoOk = $derived(canRedo(app.history));
   const exportOk = $derived(canExport());
+
+  let resizingTimeline = $state(false);
+  let resizeStartY = 0;
+  let resizeStartH = 0;
 
   function togglePlay() {
     if (!app.playing) {
@@ -97,17 +103,53 @@
     }
   }
 
+  function onSplitterPointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    resizingTimeline = true;
+    resizeStartY = e.clientY;
+    resizeStartH = app.timelineHeightPx;
+    window.addEventListener("pointermove", onSplitterPointerMove);
+    window.addEventListener("pointerup", onSplitterPointerUp);
+    window.addEventListener("pointercancel", onSplitterPointerUp);
+  }
+
+  function onSplitterPointerMove(e: PointerEvent) {
+    if (!resizingTimeline) return;
+    // Drag up → taller timeline
+    const next = resizeStartH + (resizeStartY - e.clientY);
+    app.timelineHeightPx = clampTimelineHeight(next);
+  }
+
+  function onSplitterPointerUp() {
+    if (!resizingTimeline) return;
+    resizingTimeline = false;
+    window.removeEventListener("pointermove", onSplitterPointerMove);
+    window.removeEventListener("pointerup", onSplitterPointerUp);
+    window.removeEventListener("pointercancel", onSplitterPointerUp);
+    setTimelineHeight(app.timelineHeightPx, true);
+  }
+
+  function onWindowResize() {
+    app.timelineHeightPx = clampTimelineHeight(app.timelineHeightPx);
+  }
+
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onWindowResize);
     void initApp();
   });
 
   onDestroy(() => {
     window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("resize", onWindowResize);
+    window.removeEventListener("pointermove", onSplitterPointerMove);
+    window.removeEventListener("pointerup", onSplitterPointerUp);
+    window.removeEventListener("pointercancel", onSplitterPointerUp);
   });
 </script>
 
-<div class="shell">
+<div class="shell" class:resizing={resizingTimeline}>
   {#if app.deps && !app.deps.ffmpeg}
     <MissingDeps deps={app.deps} onRecheck={() => void refreshDeps()} />
   {/if}
@@ -165,24 +207,56 @@
     />
   </div>
 
-  <Timeline />
+  <button
+    type="button"
+    class="splitter"
+    class:active={resizingTimeline}
+    aria-label="Resize timeline"
+    aria-valuenow={app.timelineHeightPx}
+    aria-valuemin={120}
+    aria-valuemax={Math.floor((typeof window !== "undefined" ? window.innerHeight : 800) * 0.6)}
+    title="Drag to resize timeline"
+    onpointerdown={onSplitterPointerDown}
+    onkeydown={(e) => {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const step = e.shiftKey ? 24 : 8;
+        const delta = e.key === "ArrowUp" ? step : -step;
+        setTimelineHeight(app.timelineHeightPx + delta, true);
+      }
+    }}
+  >
+    <span class="splitter-grip" aria-hidden="true"></span>
+  </button>
+
+  <div class="timeline-panel" style:height="{app.timelineHeightPx}px">
+    <Timeline />
+  </div>
 </div>
 
 <style>
   .shell {
-    min-height: 100vh;
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 0.55rem;
-    padding: 0.65rem 0.85rem 0.85rem;
+    gap: 0.45rem;
+    padding: 0.65rem 0.85rem 0.65rem;
+    box-sizing: border-box;
+  }
+
+  .shell.resizing {
+    cursor: row-resize;
+    user-select: none;
   }
 
   .main {
     display: grid;
     grid-template-columns: minmax(0, 1.65fr) minmax(240px, 0.9fr);
     gap: 0.55rem;
-    flex: 1;
-    min-height: 220px;
+    flex: 1 1 auto;
+    min-height: 120px;
     min-width: 0;
   }
 
@@ -191,6 +265,57 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+  }
+
+  .splitter {
+    flex: 0 0 8px;
+    margin: 0 -0.15rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: row-resize;
+    touch-action: none;
+    border-radius: 4px;
+    border: none;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    width: 100%;
+  }
+
+  .splitter:hover:not(:disabled) {
+    background: rgba(91, 140, 255, 0.12);
+  }
+
+  .splitter:hover,
+  .splitter.active,
+  .splitter:focus-visible {
+    background: rgba(91, 140, 255, 0.12);
+  }
+
+  .splitter:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .splitter-grip {
+    width: 36px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+  }
+
+  .splitter:hover .splitter-grip,
+  .splitter.active .splitter-grip {
+    background: var(--accent);
+  }
+
+  .timeline-panel {
+    flex: 0 0 auto;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   @media (max-width: 800px) {

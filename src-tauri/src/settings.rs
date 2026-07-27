@@ -8,6 +8,9 @@ use tauri::{AppHandle, Manager};
 pub struct AppSettings {
     pub last_export_dir: Option<String>,
     pub last_project_dir: Option<String>,
+    /// Timeline panel height in CSS pixels (UI preference).
+    #[serde(default)]
+    pub timeline_height_px: Option<u32>,
 }
 
 impl Default for AppSettings {
@@ -15,6 +18,7 @@ impl Default for AppSettings {
         Self {
             last_export_dir: None,
             last_project_dir: None,
+            timeline_height_px: None,
         }
     }
 }
@@ -117,6 +121,7 @@ mod tests {
         let s = AppSettings::default();
         assert_eq!(s.last_export_dir, None);
         assert_eq!(s.last_project_dir, None);
+        assert_eq!(s.timeline_height_px, None);
     }
 
     #[test]
