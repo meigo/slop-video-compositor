@@ -26,6 +26,31 @@ export type SourceMeta = {
   hasAudio: boolean;
 };
 
+/** Wire shape from Rust `check_deps` (snake_case). */
+export type DepsStatus = {
+  ffmpeg: boolean;
+  ffmpeg_path: string | null;
+};
+
+/** Wire shape from Rust `load_settings` / `save_settings`. */
+export type AppSettings = {
+  last_export_dir: string | null;
+  last_project_dir: string | null;
+};
+
+/** Wire shape from Rust `probe_media` (no path; caller attaches it). */
+export type MediaMeta = {
+  duration: number;
+  width: number;
+  height: number;
+  has_audio: boolean;
+};
+
+/** Wire shape from Rust `export_project`. */
+export type ExportResult = {
+  output_path: string;
+};
+
 /** Flattened export/preview segment */
 export type Segment =
   | {

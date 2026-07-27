@@ -54,6 +54,24 @@ pub fn default_export_dir() -> String {
         .into()
 }
 
+/// Read a UTF-8 text file (project JSON, etc.).
+#[tauri::command]
+pub fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("read {path}: {e}"))
+}
+
+/// Write a UTF-8 text file (project JSON, etc.).
+#[tauri::command]
+pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create parent dir {}: {e}", parent.display()))?;
+        }
+    }
+    std::fs::write(&path, contents).map_err(|e| format!("write {path}: {e}"))
+}
+
 /// Reveal `path` in the system file manager (Finder on macOS).
 #[tauri::command]
 pub fn reveal_in_folder(path: String) -> Result<(), String> {
