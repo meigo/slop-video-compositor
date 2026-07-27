@@ -71,9 +71,10 @@
   const p = $derived(project());
   const seqDuration = $derived(projectDuration(p));
   const contentEnd = $derived(contentDuration(p));
-  /** Visual span: sequence length, and room to scrub slightly past if needed. */
-  const endTime = $derived(Math.max(seqDuration, app.playhead, 1));
-  const contentWidth = $derived(Math.ceil(endTime * pxPerSecond) + 48);
+  /** Timeline content ends exactly at sequence length (no dead overflow). */
+  const endTime = $derived(Math.max(seqDuration, 1));
+  /** Only a few px past the end so the duration grip isn’t clipped by the scroller. */
+  const contentWidth = $derived(Math.ceil(endTime * pxPerSecond) + DURATION_HANDLE_PX);
   /** Highest priority (last array index) at top of UI. */
   const displayTracks = $derived([...p.tracks].reverse());
   const clipCount = $derived(p.tracks.reduce((n, t) => n + t.clips.length, 0));
@@ -132,8 +133,8 @@
   }
 
   function seekFromClientX(clientX: number) {
-    // Allow scrub past last clip into empty space (endTime grows with playhead).
-    setPlayhead(clientXToTime(clientX));
+    // Clamp scrub to the sequence length (blue handle).
+    setPlayhead(Math.min(clientXToTime(clientX), projectDuration(project())));
   }
 
   function selectClip(clipId: string, trackId: string) {
@@ -871,12 +872,14 @@
   .content {
     position: relative;
     min-height: 100%;
+    /* Own stacking root so playhead / duration stay above lanes + clips */
+    isolation: isolate;
   }
 
   .ruler {
     position: sticky;
     top: 0;
-    z-index: 3;
+    z-index: 5;
     background: var(--surface-2);
     border-bottom: 1px solid var(--border);
     cursor: ew-resize;
@@ -908,10 +911,12 @@
 
   .lanes {
     position: relative;
+    z-index: 1;
   }
 
   .lane {
     position: relative;
+    z-index: 1;
     border-bottom: 1px solid var(--border);
     background: var(--bg);
   }
@@ -979,16 +984,21 @@
     background: rgba(255, 255, 255, 0.18);
   }
 
+  /*
+   * Overlay markers must sit above sticky ruler (5) and lanes/clips (1).
+   * Use a solid 2px element (not border-on-width-0) so the line doesn’t drop out
+   * under sticky compositing / subpixel rounding.
+   */
   .playhead {
     position: absolute;
     top: 0;
-    width: 0;
-    border-left: 2px solid var(--danger);
-    z-index: 4;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--danger);
+    z-index: 30;
     cursor: ew-resize;
     touch-action: none;
     outline: none;
-    /* Only the hit strip receives events so clips under the line stay draggable */
     pointer-events: none;
   }
 
@@ -1004,7 +1014,7 @@
   .playhead-hit {
     position: absolute;
     top: 0;
-    left: -6px;
+    left: -5px;
     width: 12px;
     height: 100%;
     background: transparent;
@@ -1014,19 +1024,20 @@
   .playhead-head {
     position: absolute;
     top: 0;
-    left: -5px;
+    left: -4px;
     width: 0;
     height: 0;
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
     border-top: 8px solid var(--danger);
     pointer-events: none;
+    z-index: 1;
   }
 
   .duration-handle {
     position: absolute;
     top: 0;
-    z-index: 5;
+    z-index: 31;
     margin-left: -5px;
     cursor: ew-resize;
     touch-action: none;
@@ -1044,7 +1055,7 @@
     bottom: 0;
     left: 4px;
     width: 2px;
-    background: rgba(91, 140, 255, 0.75);
+    background: var(--accent);
     pointer-events: none;
   }
 
@@ -1058,6 +1069,7 @@
     background: var(--accent);
     border: 1px solid rgba(255, 255, 255, 0.35);
     pointer-events: none;
+    z-index: 1;
   }
 
   .duration-handle:focus-visible .duration-handle-grip {
