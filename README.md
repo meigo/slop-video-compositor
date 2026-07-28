@@ -131,6 +131,16 @@ Default export folder: last used export directory, else `~/Movies/Slop Refs`.
 
 See `docs/superpowers/specs/2026-07-27-slop-video-compositor-design.md`.
 
+## Acknowledgments
+
+Development of this project has been substantially assisted by **[Grok](https://x.ai/)** (xAI). Commits that include Grok’s work use the trailer:
+
+```text
+Co-Authored-By: Grok <noreply@x.ai>
+```
+
+(Same attribution style as Claude via `Co-Authored-By` on other Meigo projects.)
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
