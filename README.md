@@ -131,15 +131,36 @@ Default export folder: last used export directory, else `~/Movies/Slop Refs`.
 
 See `docs/superpowers/specs/2026-07-27-slop-video-compositor-design.md`.
 
-## Acknowledgments
+## Contributors
 
-Development of this project has been substantially assisted by **[Grok](https://x.ai/)** (xAI). Commits that include Grok’s work use the trailer:
+<table>
+  <tr>
+    <td align="center" width="140">
+      <a href="https://github.com/meigo">
+        <img src="https://github.com/meigo.png?size=100" width="100" height="100" alt="meigo" /><br />
+        <sub><b>Meigo Kukk</b></sub>
+      </a><br />
+      <sub>owner</sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://x.ai/">
+        <img src="https://www.google.com/s2/favicons?domain=x.ai&sz=128" width="100" height="100" alt="Grok / xAI" /><br />
+        <sub><b>Grok</b></sub>
+      </a><br />
+      <sub>xAI · co-author</sub>
+    </td>
+  </tr>
+</table>
+
+Development has been substantially assisted by **[Grok](https://x.ai/)** (xAI). Commits that include that work use:
 
 ```text
 Co-Authored-By: Grok <noreply@x.ai>
 ```
 
-(Same attribution style as Claude via `Co-Authored-By` on other Meigo projects.)
+That matches the Claude style used on other Meigo projects (`Co-Authored-By: … <noreply@anthropic.com>`).
+
+**Note on GitHub’s automatic “Contributors” list:** GitHub only lists **linked GitHub accounts**. Anthropic’s [`claude`](https://github.com/claude) account is tied to `noreply@anthropic.com`, so Claude can appear in that panel when they author or co-author commits. There is currently **no official GitHub user linked to `noreply@x.ai`**, so Grok shows as co-author on individual commit pages but not in the auto-generated Contributors sidebar. Credit here (and on commits) is intentional.
 
 ## License
 
