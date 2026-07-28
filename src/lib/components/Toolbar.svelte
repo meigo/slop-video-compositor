@@ -69,8 +69,8 @@
     "new-tracks": "New tracks",
   };
 
-  const ICON = 16;
-  const CHEV = 14;
+  const ICON = 18;
+  const CHEV = 16;
 
   type MenuId = "file" | "import" | "canvas" | null;
   let openMenu = $state<MenuId>(null);
@@ -401,13 +401,14 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem 0.75rem;
-    padding: 0.4rem 0.65rem;
+    padding: 0.45rem 0.7rem;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
     min-width: 0;
     /* Must stay visible — overflow clips absolute menu panels */
     overflow: visible;
+    font-size: 0.95rem;
   }
 
   .group {
@@ -415,14 +416,17 @@
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.35rem;
     flex-shrink: 0;
   }
 
   .group :global(button) {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.35rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: 0.45em 0.8em;
   }
 
   .canvas-group {
@@ -498,13 +502,13 @@
     gap: 0.45rem;
     width: 100%;
     text-align: left;
-    padding: 0.4em 0.55em;
+    padding: 0.45em 0.6em;
     border-radius: 5px;
     background: transparent;
     border: 1px solid transparent;
     color: var(--text);
-    font-weight: 450;
-    font-size: 0.85rem;
+    font-weight: 500;
+    font-size: 0.95rem;
   }
 
   .menu-panel :global(button:hover) {
@@ -519,15 +523,15 @@
 
   .menu-panel kbd {
     margin-left: auto;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: var(--muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-weight: 400;
   }
 
   .panel-label {
-    padding: 0.25rem 0.5rem 0.35rem;
-    font-size: 0.7rem;
+    padding: 0.3rem 0.55rem 0.4rem;
+    font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -549,7 +553,7 @@
     gap: 0.35rem;
     padding: 0 0.35rem;
     color: var(--muted);
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
 
   .canvas-fields label {
@@ -569,7 +573,7 @@
   .mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-variant-numeric: tabular-nums;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
 
   .presets {
@@ -580,9 +584,9 @@
   }
 
   .preset {
-    padding: 0.25em 0.45em !important;
+    padding: 0.3em 0.5em !important;
     width: auto !important;
-    font-size: 0.75rem !important;
+    font-size: 0.9rem !important;
     background: var(--surface-2) !important;
     border-color: var(--border) !important;
   }

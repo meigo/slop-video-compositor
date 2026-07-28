@@ -4,6 +4,8 @@ import type { Clip } from "./types";
 import {
   findClip,
   moveClip,
+  moveClipsByDelta,
+  deleteClips,
   trimClipIn,
   trimClipOut,
   splitClip,
@@ -187,6 +189,42 @@ describe("moveClip", () => {
     const p = projectWithClip();
     const next = moveClip(p, "c1", 9, "no-such-track");
     expect(next).toBe(p);
+  });
+});
+
+describe("moveClipsByDelta", () => {
+  it("shifts multiple clips by the same delta and preserves spacing", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 2 }),
+      sampleClip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 2 }),
+    );
+    const next = moveClipsByDelta(p, ["a", "b"], 3);
+    expect(next.tracks[0].clips.find((c) => c.id === "a")!.timelineStart).toBe(3);
+    expect(next.tracks[0].clips.find((c) => c.id === "b")!.timelineStart).toBe(8);
+  });
+
+  it("clamps so no clip goes before 0", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 1, sourceIn: 0, sourceOut: 2 }),
+      sampleClip({ id: "b", timelineStart: 4, sourceIn: 0, sourceOut: 2 }),
+    );
+    const next = moveClipsByDelta(p, ["a", "b"], -10);
+    expect(next.tracks[0].clips.find((c) => c.id === "a")!.timelineStart).toBe(0);
+    expect(next.tracks[0].clips.find((c) => c.id === "b")!.timelineStart).toBe(3);
+  });
+});
+
+describe("deleteClips", () => {
+  it("removes several ids", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 1 }),
+      sampleClip({ id: "b", timelineStart: 2, sourceIn: 0, sourceOut: 1 }),
+    );
+    const next = deleteClips(p, ["a", "b"]);
+    expect(next.tracks[0].clips).toHaveLength(0);
   });
 });
 

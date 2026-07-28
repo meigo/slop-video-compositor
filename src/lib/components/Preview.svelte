@@ -16,10 +16,13 @@
   import type { Clip, ClipTransform, Project } from "$lib/types";
   import {
     app,
+    commitProjectEdit,
     previewProject,
     project,
     replaceClip,
+    selectClipOnly,
     setPlayhead,
+    setPresentLive,
   } from "../../state/appState.svelte";
 
   /** Viewport zoom limits (wheel / trackpad). */
@@ -198,11 +201,6 @@
     if (holdFrame) return;
 
     paintBlack();
-  }
-
-  function setPresentLive(next: Project) {
-    app.history = { ...app.history, present: next };
-    app.dirty = true;
   }
 
   function applyClipTransform(base: Project, clipId: string, transform: ClipTransform): Project {
@@ -797,7 +795,7 @@
       }
 
       if (app.selectedClipId !== clip.id) {
-        app.selectedClipId = clip.id;
+        selectClipOnly(clip.id);
       }
 
       dragClipId = clip.id;
@@ -884,13 +882,9 @@
 
     if (!moved) return;
 
-    app.history = {
-      past: [...app.history.past, before].slice(-50),
-      present: after,
-      future: [],
-    };
-    app.dirty = true;
-    app.status = mode === "scale" ? "Scaled transform" : "Moved transform";
+    if (commitProjectEdit(before, after)) {
+      app.status = mode === "scale" ? "Scaled transform" : "Moved transform";
+    }
     paint();
   }
 

@@ -131,10 +131,10 @@
       </label>
       <div class="ro">
         <span class="label">Duration</span>
-        <span class="value mono"
-          >{formatTimestamp(clip.sourceOut - clip.sourceIn)}
-          <span class="muted">({roundTo(clip.sourceOut - clip.sourceIn, 2)}s)</span></span
-        >
+        <span class="value mono duration-value" title="Clip duration (read-only)">
+          {formatTimestamp(clip.sourceOut - clip.sourceIn)}
+          <span class="secs">({roundTo(clip.sourceOut - clip.sourceIn, 2)}s)</span>
+        </span>
       </div>
     </div>
 
@@ -296,9 +296,31 @@
     word-break: break-all;
   }
 
+  /* Match adjacent number inputs (height + type size) */
+  .duration-value {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2.1rem;
+    padding: 0.4em 0.55em;
+    box-sizing: border-box;
+    font-size: 1em;
+    line-height: 1.25;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    word-break: normal;
+  }
+
+  .duration-value .secs {
+    color: var(--muted);
+    font-size: inherit;
+    font-weight: 400;
+  }
+
   .mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.85rem;
   }
 
   .muted {

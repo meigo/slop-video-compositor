@@ -25,7 +25,7 @@ Sits between **[slop-video-downloader](https://github.com/meigo/slop-video-downl
 - Snap on drag/trim (**Shift** = free); Fit zoom to sequence width
 - **Program out** sequence end (shortening trims/deletes media past that time)
 - Import placement: append on track / at playhead / each file → new track
-- Named **markers** on the ruler; copy / paste / duplicate clips
+- Named **markers** on the ruler; multi-select (⌘/Ctrl-click) + group time move; copy / paste / duplicate
 - Preview: dual-buffer free-run; track **solo** (preview only); viewport pan/zoom vs clip transform
 - Compact toolbar: **File ▾**, **Import** + place menu, **Export**, undo/redo, **Canvas ▾** (presets + W×H)
 - Relink + Reveal source; autosave to `*.autosave.json` beside the project
@@ -87,7 +87,8 @@ Missing media: **Relink…** or **Reveal** in the Inspector. Open warns if sourc
 | M | Marker at playhead |
 | S | Split selected clip at playhead |
 | Delete / Backspace | Delete selected clip |
-| ⌘C / ⌘V / ⌘D | Copy / paste / duplicate |
+| ⌘C / ⌘V / ⌘D | Copy / paste / duplicate (selection) |
+| ⌘-click clip | Add/remove from multi-select |
 | ⌘S / ⌘⇧S | Save / Save As |
 | ⌘O | Open project |
 | ⌘I / ⌘⇧I | Import / import each → new track |

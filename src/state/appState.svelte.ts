@@ -2,6 +2,7 @@ import {
   addClip,
   addTrack,
   clampProjectSourcesToMedia,
+  deleteClips,
   findClip,
   overwriteWithClip,
 } from "$lib/clips";
@@ -10,6 +11,7 @@ import { toExportOpts } from "$lib/exportPayload";
 import {
   canRedo,
   canUndo,
+  historyCommitEdit,
   historyInit,
   historyPush,
   historyRedo,
@@ -74,7 +76,10 @@ export type ImportPlacement = "append" | "playhead" | "new-tracks";
 export const app = $state({
   history: historyInit(boot) as History<Project>,
   playhead: 0,
+  /** Primary selection (Inspector / split target) — last clicked. */
   selectedClipId: null as string | null,
+  /** Multi-select set; always contains selectedClipId when non-empty. */
+  selectedClipIds: [] as string[],
   selectedTrackId: boot.tracks[0]?.id ?? "",
   metaByPath: new Map<string, SourceMeta>(),
   projectPath: null as string | null,
@@ -97,8 +102,8 @@ export const app = $state({
   timelineHeightPx: 200,
   /** Where multi-import places clips. */
   importPlacement: "append" as ImportPlacement,
-  /** Clipboard for copy/paste (clip body without id). */
-  clipboard: null as Omit<Clip, "id"> | null,
+  /** Clipboard for copy/paste (clip bodies without id; may be multi). */
+  clipboard: null as Omit<Clip, "id">[] | null,
   /** Paths that failed last probe (open/import). */
   missingSources: [] as string[],
 });
@@ -149,12 +154,52 @@ import { basename, truncateMiddle } from "$lib/pathUtil";
 export { basename, truncateMiddle };
 
 function syncSelection(p: Project) {
+  app.selectedClipIds = app.selectedClipIds.filter((id) => findClip(p, id));
   if (app.selectedClipId && !findClip(p, app.selectedClipId)) {
-    app.selectedClipId = null;
+    app.selectedClipId = app.selectedClipIds[app.selectedClipIds.length - 1] ?? null;
+  } else if (app.selectedClipId && !app.selectedClipIds.includes(app.selectedClipId)) {
+    app.selectedClipIds = [...app.selectedClipIds, app.selectedClipId];
   }
   if (!p.tracks.some((t) => t.id === app.selectedTrackId)) {
     app.selectedTrackId = p.tracks[0]?.id ?? "";
   }
+}
+
+/** Replace selection with one clip (or clear). */
+export function selectClipOnly(clipId: string | null, trackId?: string) {
+  if (!clipId) {
+    app.selectedClipId = null;
+    app.selectedClipIds = [];
+    return;
+  }
+  app.selectedClipId = clipId;
+  app.selectedClipIds = [clipId];
+  if (trackId) app.selectedTrackId = trackId;
+}
+
+/** Cmd/Ctrl-click: toggle clip in multi-select; becomes primary when added. */
+export function toggleClipInSelection(clipId: string, trackId?: string) {
+  const has = app.selectedClipIds.includes(clipId);
+  if (has) {
+    app.selectedClipIds = app.selectedClipIds.filter((id) => id !== clipId);
+    app.selectedClipId =
+      app.selectedClipId === clipId
+        ? (app.selectedClipIds[app.selectedClipIds.length - 1] ?? null)
+        : app.selectedClipId;
+  } else {
+    app.selectedClipIds = [...app.selectedClipIds, clipId];
+    app.selectedClipId = clipId;
+    if (trackId) app.selectedTrackId = trackId;
+  }
+}
+
+export function isClipSelected(clipId: string): boolean {
+  return app.selectedClipIds.includes(clipId);
+}
+
+export function clearClipSelection() {
+  app.selectedClipId = null;
+  app.selectedClipIds = [];
 }
 
 /** Fingerprint of last saved / loaded / new project for accurate dirty tracking. */
@@ -175,6 +220,31 @@ export function commitProject(next: Project) {
   app.history = historyPush(app.history, normalized);
   refreshDirty();
   syncSelection(normalized);
+}
+
+/**
+ * Finish a live drag (timeline/preview/duration): `before` is the pre-drag snapshot;
+ * `after` is the final project (present may already equal after from setPresentLive).
+ * Returns false if nothing changed (restores `before` without a history entry).
+ */
+export function commitProjectEdit(before: Project, after: Project): boolean {
+  const normalized = withEffectiveDuration(after);
+  if (serializeProject(before) === serializeProject(normalized)) {
+    app.history = { ...app.history, present: before };
+    refreshDirty();
+    syncSelection(before);
+    return false;
+  }
+  app.history = historyCommitEdit(app.history, before, normalized);
+  refreshDirty();
+  syncSelection(normalized);
+  return true;
+}
+
+/** Live preview during drag — does not push undo (finish with commitProjectEdit). */
+export function setPresentLive(next: Project) {
+  app.history = { ...app.history, present: next };
+  app.dirty = true;
 }
 
 export function replaceClip(p: Project, clipId: string, clip: Clip): Project {
@@ -216,6 +286,7 @@ export function newProject() {
   app.history = historyInit(p);
   app.playhead = 0;
   app.selectedClipId = null;
+  app.selectedClipIds = [];
   app.selectedTrackId = p.tracks[0]?.id ?? "";
   app.metaByPath = new Map();
   app.projectPath = null;
@@ -237,6 +308,7 @@ export async function openProject() {
     app.projectPath = result.path;
     app.playhead = 0;
     app.selectedClipId = null;
+    app.selectedClipIds = [];
     app.selectedTrackId = result.project.tracks[0]?.id ?? "";
     app.metaByPath = new Map();
     app.previewSoloTrackId = null;
@@ -357,7 +429,7 @@ export async function importVideos(placement: ImportPlacement = app.importPlacem
 
     if (added > 0) {
       commitProject(p);
-      if (lastClipId) app.selectedClipId = lastClipId;
+      if (lastClipId) selectClipOnly(lastClipId);
       await persistSettings();
       const failNote = failed > 0 ? `, ${failed} failed` : "";
       const mode =
@@ -597,11 +669,26 @@ export function seekNextCut() {
 }
 
 export function setSelectedClip(id: string | null) {
-  app.selectedClipId = id;
+  selectClipOnly(id);
 }
 
 export function setSelectedTrack(id: string) {
   app.selectedTrackId = id;
+}
+
+export function deleteSelectedClips() {
+  const ids =
+    app.selectedClipIds.length > 0
+      ? app.selectedClipIds
+      : app.selectedClipId
+        ? [app.selectedClipId]
+        : [];
+  if (ids.length === 0) return;
+  const next = deleteClips(project(), ids);
+  if (next === project()) return;
+  commitProject(next);
+  clearClipSelection();
+  app.status = ids.length === 1 ? "Deleted clip" : `Deleted ${ids.length} clips`;
 }
 
 export function toggleSoloTrack(trackId: string) {
@@ -616,44 +703,64 @@ export function toggleSoloTrack(trackId: string) {
 }
 
 export function copySelectedClip() {
-  const clip = selectedClip();
-  if (!clip) {
+  const p = project();
+  const ids =
+    app.selectedClipIds.length > 0
+      ? app.selectedClipIds
+      : app.selectedClipId
+        ? [app.selectedClipId]
+        : [];
+  const bodies: Omit<Clip, "id">[] = [];
+  for (const id of ids) {
+    const found = findClip(p, id);
+    if (!found) continue;
+    const { id: _id, ...rest } = found.clip;
+    bodies.push({ ...rest, transform: { ...rest.transform } });
+  }
+  if (bodies.length === 0) {
     app.status = "Nothing to copy";
     return;
   }
-  const { id: _id, ...rest } = clip;
-  app.clipboard = { ...rest, transform: { ...rest.transform } };
-  app.status = "Copied clip";
+  app.clipboard = bodies;
+  app.status = bodies.length === 1 ? "Copied clip" : `Copied ${bodies.length} clips`;
 }
 
 export function pasteClipboard() {
-  if (!app.clipboard) {
+  if (!app.clipboard || app.clipboard.length === 0) {
     app.status = "Clipboard empty";
     return;
   }
+  let p0 = project();
+  const minStart = Math.min(...app.clipboard.map((c) => c.timelineStart));
+  const newIds: string[] = [];
+
+  // Paste onto selected track; keep relative timeline offsets within the set.
   let trackId = app.selectedTrackId;
-  const p0 = project();
   if (!p0.tracks.some((t) => t.id === trackId)) {
     trackId = p0.tracks[0]?.id ?? "";
   }
   if (!trackId) return;
 
-  const clip: Clip = {
-    ...app.clipboard,
-    id: newId(),
-    timelineStart: app.playhead,
-    transform: { ...app.clipboard.transform },
-  };
-  const next = addClip(p0, trackId, clip);
-  commitProject(next);
-  app.selectedClipId = clip.id;
-  app.selectedTrackId = trackId;
-  app.status = "Pasted clip";
+  for (const body of app.clipboard) {
+    const clip: Clip = {
+      ...body,
+      id: newId(),
+      timelineStart: app.playhead + (body.timelineStart - minStart),
+      transform: { ...body.transform },
+    };
+    p0 = addClip(p0, trackId, clip);
+    newIds.push(clip.id);
+  }
+
+  commitProject(p0);
+  app.selectedClipIds = newIds;
+  app.selectedClipId = newIds[newIds.length - 1] ?? null;
+  app.status = newIds.length === 1 ? "Pasted clip" : `Pasted ${newIds.length} clips`;
 }
 
 export function duplicateSelectedClip() {
   copySelectedClip();
-  if (app.clipboard) pasteClipboard();
+  if (app.clipboard?.length) pasteClipboard();
 }
 
 export function addMarkerAtPlayhead(label = "") {

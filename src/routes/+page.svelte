@@ -57,6 +57,34 @@
   const undoOk = $derived(canUndo(app.history));
   const redoOk = $derived(canRedo(app.history));
   const exportOk = $derived(canExport());
+  const nSel = $derived(app.selectedClipIds.length);
+
+  /** Contextual status-bar tip (does not overwrite action/error status). */
+  const statusHint = $derived.by(() => {
+    if (app.exporting) return "Export runs in the background — keep this window open";
+    if (app.missingSources.length > 0) {
+      return "Select a clip → Relink… or Reveal in Inspector";
+    }
+    if (app.playing) {
+      return "Space pause · [ ] cuts · Home/End ends";
+    }
+    if (nSel > 1) {
+      return `${nSel} selected · drag any to move group · Delete all · ⌘C copy · ⌘-click to toggle`;
+    }
+    if (nSel === 1 && clipDur != null) {
+      return `Clip ${clipDur.toFixed(2)}s · ⌘-click add more · S split · edge-drag trim · Delete remove`;
+    }
+    if (clipCountHint(p) === 0) {
+      return "Import clips (⌘I) · append is default placement";
+    }
+    return "Click clip to select · ⌘-click multi-select · Space play";
+  });
+
+  function clipCountHint(proj: typeof p): number {
+    let n = 0;
+    for (const t of proj.tracks) n += t.clips.length;
+    return n;
+  }
 
   let resizingTimeline = $state(false);
   let resizeStartY = 0;
@@ -251,9 +279,8 @@
   <StatusLine
     status={app.missingSources.length > 0
       ? `${app.status} · ${app.missingSources.length} missing media`
-      : clipDur != null
-        ? `${app.status} · clip ${clipDur.toFixed(2)}s`
-        : app.status}
+      : app.status}
+    hint={statusHint}
     dirty={app.dirty}
     projectPath={app.projectPath}
     projectName={p.name}

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   historyInit,
   historyPush,
+  historyCommitEdit,
   historyUndo,
   historyRedo,
   canUndo,
@@ -58,6 +59,17 @@ describe("historyPush", () => {
     h = historyPush(h, "d", 2);
     expect(h.past).toEqual(["b", "c"]);
     expect(h.present).toBe("d");
+  });
+});
+
+describe("historyCommitEdit", () => {
+  it("pushes explicit before even when present was already after", () => {
+    let h = historyInit("a");
+    h = historyPush(h, "b");
+    // Live drag already set present to final
+    h = { ...h, present: "c-live" };
+    h = historyCommitEdit(h, "b", "c");
+    expect(h).toEqual({ past: ["a", "b"], present: "c", future: [] });
   });
 });
 

@@ -6,8 +6,8 @@
   import ZoomIn from "@lucide/svelte/icons/zoom-in";
   import {
     addTrack,
-    deleteClip,
     moveClip,
+    moveClipsByDelta,
     splitClip,
     trimClipIn,
     trimClipOut,
@@ -31,13 +31,20 @@
   import {
     app,
     basename,
+    clearClipSelection,
     commitProject,
+    commitProjectEdit,
     deleteMarker,
+    deleteSelectedClips,
+    isClipSelected,
     project,
+    selectClipOnly,
     setPlayhead,
+    setPresentLive,
     setTimelineDuration,
     stepPlayheadFrames,
     stepPlayheadSeconds,
+    toggleClipInSelection,
     toggleSoloTrack,
   } from "../../state/appState.svelte";
 
@@ -55,9 +62,11 @@
 
   type DragKind = "move" | "trim-in" | "trim-out";
 
-  let dragKind: DragKind | null = null;
+  let dragKind = $state<DragKind | null>(null);
   /** Reactive so `.dragging` class updates during pointer capture. */
   let dragClipId = $state<string | null>(null);
+  /** Ids moved together (includes dragClipId). */
+  let dragGroupIds = $state<string[]>([]);
   let dragBefore: Project | null = null;
   let dragOriginX = 0;
   let dragOriginY = 0;
@@ -65,7 +74,7 @@
   let startSourceIn = 0;
   let startSourceOut = 0;
   let startTrackId = "";
-  let didMove = false;
+  let didMove = $state(false);
   let pointerId: number | null = null;
 
   /** Ruler / playhead / empty-lane scrub (separate from clip drag). */
@@ -124,11 +133,6 @@
     return out;
   });
 
-  function setPresentLive(next: Project) {
-    app.history = { ...app.history, present: next };
-    app.dirty = true;
-  }
-
   function trackIdAtClientY(clientY: number): string | null {
     if (!lanesEl) return null;
     const rows = lanesEl.querySelectorAll<HTMLElement>("[data-track-id]");
@@ -158,11 +162,6 @@
     setPlayhead(Math.min(clientXToTime(clientX), projectDuration(project())));
   }
 
-  function selectClip(clipId: string, trackId: string) {
-    app.selectedClipId = clipId;
-    app.selectedTrackId = trackId;
-  }
-
   function selectTrack(trackId: string) {
     app.selectedTrackId = trackId;
   }
@@ -183,6 +182,7 @@
   function clearDragState() {
     dragKind = null;
     dragClipId = null;
+    dragGroupIds = [];
     dragBefore = null;
     pointerId = null;
     didMove = false;
@@ -276,18 +276,14 @@
     // One undo entry: pre-drag snapshot → program out (trim if shorter than content).
     if (before) {
       const after = setProjectDuration(before, t);
-      app.history = {
-        past: [...app.history.past, before].slice(-50),
-        present: after,
-        future: [],
-      };
-      app.dirty = true;
-      app.status =
-        t < contentDuration(before)
-          ? `Sequence out ${projectDuration(after).toFixed(2)}s (trimmed)`
-          : `Timeline ${projectDuration(after).toFixed(2)}s`;
-      if (app.playhead > projectDuration(after)) {
-        app.playhead = projectDuration(after);
+      if (commitProjectEdit(before, after)) {
+        app.status =
+          t < contentDuration(before)
+            ? `Sequence out ${projectDuration(after).toFixed(2)}s (trimmed)`
+            : `Timeline ${projectDuration(after).toFixed(2)}s`;
+      }
+      if (app.playhead > projectDuration(project())) {
+        app.playhead = projectDuration(project());
       }
     } else {
       setTimelineDuration(t);
@@ -337,7 +333,7 @@
     if ((e.target as HTMLElement).closest(".clip")) return;
     if ((e.target as HTMLElement).closest(".playhead")) return;
     selectTrack(trackId);
-    app.selectedClipId = null;
+    clearClipSelection();
     startScrub(e);
   }
 
@@ -367,7 +363,21 @@
     const foundClip = p.tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
     if (!foundClip) return;
 
-    selectClip(clipId, trackId);
+    const additive = e.metaKey || e.ctrlKey;
+    if (additive) {
+      toggleClipInSelection(clipId, trackId);
+      // Additive click only — no drag (avoids fighting multi-toggle)
+      return;
+    }
+
+    // If clicking an unselected clip, become sole selection; if already selected, keep multi-set.
+    if (!isClipSelected(clipId)) {
+      selectClipOnly(clipId, trackId);
+    } else {
+      // Ensure primary is the drag handle clip
+      app.selectedClipId = clipId;
+      app.selectedTrackId = trackId;
+    }
 
     let snapshot: Project;
     try {
@@ -380,6 +390,11 @@
 
     dragKind = edge === "in" ? "trim-in" : edge === "out" ? "trim-out" : "move";
     dragClipId = clipId;
+    // Multi move only for body drag (not trim edges)
+    dragGroupIds =
+      dragKind === "move" && app.selectedClipIds.length > 1
+        ? [...app.selectedClipIds]
+        : [clipId];
     dragBefore = snapshot;
     dragOriginX = e.clientX;
     dragOriginY = e.clientY;
@@ -406,10 +421,22 @@
     // Shift = free (no snap). Threshold scales slightly with zoom.
     const snapOn = !e.shiftKey;
     const thresh = Math.max(DEFAULT_SNAP_THRESHOLD, 8 / pxPerSecond);
+    const before = dragBefore;
     const targets = snapOn
-      ? collectSnapTimes(dragBefore, {
+      ? collectSnapTimes(before, {
           excludeClipId: dragClipId,
           playhead: app.playhead,
+        }).filter((t) => {
+          // Also ignore edges of other group members
+          if (dragGroupIds.length <= 1) return true;
+          for (const id of dragGroupIds) {
+            if (id === dragClipId) continue;
+            const c = before.tracks.flatMap((tr) => tr.clips).find((x) => x.id === id);
+            if (!c) continue;
+            const end = c.timelineStart + (c.sourceOut - c.sourceIn);
+            if (Math.abs(t - c.timelineStart) < 1e-9 || Math.abs(t - end) < 1e-9) return false;
+          }
+          return true;
         })
       : [];
 
@@ -419,8 +446,16 @@
         const dur = startSourceOut - startSourceIn;
         newStart = snapClipStart(newStart, dur, targets, thresh);
       }
+      const delta = newStart - startTimelineStart;
+
+      if (dragGroupIds.length > 1) {
+        // Group: same Δt, no track change
+        setPresentLive(moveClipsByDelta(before, dragGroupIds, delta));
+        return;
+      }
+
       const toTrackId = trackIdAtClientY(e.clientY) ?? startTrackId;
-      setPresentLive(moveClip(dragBefore, dragClipId, newStart, toTrackId));
+      setPresentLive(moveClip(before, dragClipId, newStart, toTrackId));
       if (toTrackId) app.selectedTrackId = toTrackId;
       return;
     }
@@ -433,13 +468,13 @@
         const snappedStart = snapTime(rawStart, targets, thresh);
         newIn = startSourceIn + (snappedStart - startTimelineStart);
       }
-      setPresentLive(trimClipIn(dragBefore, dragClipId, newIn));
+      setPresentLive(trimClipIn(before, dragClipId, newIn));
       return;
     }
 
     if (dragKind === "trim-out") {
       let newOut = startSourceOut + dt;
-      const clip = dragBefore.tracks.flatMap((t) => t.clips).find((c) => c.id === dragClipId);
+      const clip = before.tracks.flatMap((t) => t.clips).find((c) => c.id === dragClipId);
       if (clip) {
         const meta = app.metaByPath.get(clip.sourcePath);
         if (meta && Number.isFinite(meta.duration)) {
@@ -451,7 +486,7 @@
           newOut = startSourceIn + (snappedEnd - startTimelineStart);
         }
       }
-      setPresentLive(trimClipOut(dragBefore, dragClipId, newOut));
+      setPresentLive(trimClipOut(before, dragClipId, newOut));
     }
   }
 
@@ -472,15 +507,15 @@
       return;
     }
 
-    // One undo entry: past ← before, present stays after
-    app.history = {
-      past: [...app.history.past, before].slice(-50),
-      present: after,
-      future: [],
-    };
-    app.dirty = true;
+    if (!commitProjectEdit(before, after)) return;
     app.status =
-      kind === "move" ? "Moved clip" : kind === "trim-in" ? "Trimmed in" : "Trimmed out";
+      kind === "move"
+        ? app.selectedClipIds.length > 1
+          ? `Moved ${app.selectedClipIds.length} clips`
+          : "Moved clip"
+        : kind === "trim-in"
+          ? "Trimmed in"
+          : "Trimmed out";
   }
 
   function onWindowPointerUp(e: PointerEvent) {
@@ -503,7 +538,7 @@
     commitProject(next);
     if (newTrack) {
       app.selectedTrackId = newTrack.id;
-      app.selectedClipId = null;
+      clearClipSelection();
     }
     app.status = `Added ${newTrack?.name ?? "track"}`;
   }
@@ -540,14 +575,9 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     if (e.key === "Delete" || e.key === "Backspace") {
-      const id = app.selectedClipId;
-      if (!id) return;
+      if (app.selectedClipIds.length === 0 && !app.selectedClipId) return;
       e.preventDefault();
-      const next = deleteClip(project(), id);
-      if (next === project()) return;
-      commitProject(next);
-      app.selectedClipId = null;
-      app.status = "Deleted clip";
+      deleteSelectedClips();
       return;
     }
 
@@ -754,7 +784,7 @@
                   {#if preW >= 2}
                     <div
                       class="clip-handle left"
-                      class:active={clip.id === app.selectedClipId}
+                      class:active={isClipSelected(clip.id)}
                       style="{colorVars}; left: {usedLeft - preW}px; width: {preW}px"
                       title="Trimmed head ({preSec.toFixed(2)}s) — drag left edge of clip to restore"
                       aria-hidden="true"
@@ -763,7 +793,7 @@
                   {#if postW >= 2}
                     <div
                       class="clip-handle right"
-                      class:active={clip.id === app.selectedClipId}
+                      class:active={isClipSelected(clip.id)}
                       style="{colorVars}; left: {usedLeft + usedW}px; width: {postW}px"
                       title="Trimmed tail ({postSec.toFixed(2)}s) — drag right edge of clip to restore"
                       aria-hidden="true"
@@ -771,8 +801,10 @@
                   {/if}
                   <div
                     class="clip"
-                    class:active={clip.id === app.selectedClipId}
-                    class:dragging={dragClipId === clip.id}
+                    class:active={isClipSelected(clip.id)}
+                    class:primary={clip.id === app.selectedClipId && app.selectedClipIds.length > 1}
+                    class:dragging={dragClipId === clip.id ||
+                      (dragKind === "move" && dragGroupIds.includes(clip.id) && didMove)}
                     style="{colorVars}; left: {usedLeft}px; width: {usedW}px"
                     title={clip.sourcePath}
                     role="button"
@@ -782,7 +814,7 @@
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         e.stopPropagation();
-                        selectClip(clip.id, track.id);
+                        selectClipOnly(clip.id, track.id);
                       }
                     }}
                   >
@@ -1295,6 +1327,12 @@
     );
     box-shadow: 0 0 0 1px
       hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.85);
+  }
+
+  .clip.primary {
+    box-shadow:
+      0 0 0 1px hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.85),
+      0 0 0 3px rgba(255, 255, 255, 0.2);
   }
 
   .clip.dragging {

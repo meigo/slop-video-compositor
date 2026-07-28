@@ -157,6 +157,68 @@ export function moveClip(
   return overwriteWithClip(next, clipId);
 }
 
+/**
+ * Shift many clips by the same Δt (group move). Tracks stay put.
+ * Positions update first, then each selected clip overwrites non-selected neighbors.
+ * Relative spacing among the set is preserved, so they do not overwrite each other.
+ */
+export function moveClipsByDelta(
+  project: Project,
+  clipIds: string[],
+  deltaT: number,
+): Project {
+  const ids = [...new Set(clipIds)].filter((id) => findClip(project, id));
+  if (ids.length === 0 || !Number.isFinite(deltaT) || deltaT === 0) return project;
+
+  let minStart = Infinity;
+  for (const id of ids) {
+    const f = findClip(project, id)!;
+    minStart = Math.min(minStart, f.clip.timelineStart);
+  }
+  const d = Math.max(deltaT, -minStart);
+  if (d === 0) return project;
+
+  const idSet = new Set(ids);
+  let next: Project = {
+    ...project,
+    tracks: project.tracks.map((track) => ({
+      ...track,
+      clips: track.clips.map((c) => {
+        if (!idSet.has(c.id)) return c;
+        return { ...c, timelineStart: c.timelineStart + d };
+      }),
+    })),
+  };
+
+  // Stable order: lower track first, then timeline start — each wins vs non-selected only.
+  const ordered = ids
+    .map((id) => {
+      const f = findClip(next, id);
+      return f ? { id, ti: f.trackIndex, t: f.clip.timelineStart } : null;
+    })
+    .filter((x): x is { id: string; ti: number; t: number } => x != null)
+    .sort((a, b) => a.ti - b.ti || a.t - b.t);
+
+  for (const { id } of ordered) {
+    next = overwriteWithClip(next, id);
+  }
+  return next;
+}
+
+/** Delete many clips; returns project unchanged if none found. */
+export function deleteClips(project: Project, clipIds: string[]): Project {
+  let next = project;
+  let changed = false;
+  for (const id of clipIds) {
+    const n = deleteClip(next, id);
+    if (n !== next) {
+      next = n;
+      changed = true;
+    }
+  }
+  return changed ? next : project;
+}
+
 /** Left edge trim: newSourceIn, keeps timeline visual right edge stable when possible. */
 export function trimClipIn(project: Project, clipId: string, newSourceIn: number): Project {
   const found = findClip(project, clipId);

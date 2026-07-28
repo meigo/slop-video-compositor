@@ -13,6 +13,23 @@ export function historyPush<T>(h: History<T>, next: T, max = 50): History<T> {
   return { past, present: next, future: [] };
 }
 
+/**
+ * Finish a live drag/edit: push explicit `before` snapshot (not current present,
+ * which may already be the live after-state), set present to `after`, clear future.
+ */
+export function historyCommitEdit<T>(
+  h: History<T>,
+  before: T,
+  after: T,
+  max = 50,
+): History<T> {
+  const past = [...h.past, before];
+  while (past.length > max) {
+    past.shift();
+  }
+  return { past, present: after, future: [] };
+}
+
 export function historyUndo<T>(h: History<T>): History<T> {
   if (h.past.length === 0) return h;
   const past = h.past.slice(0, -1);
