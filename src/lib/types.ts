@@ -11,6 +11,13 @@ export type Clip = {
 
 export type Track = { id: string; name: string; clips: Clip[] };
 
+/** Named ruler marker (seek target; not burned into export). */
+export type Marker = {
+  id: string;
+  t: number;
+  label: string;
+};
+
 export type Project = {
   version: 1;
   name: string;
@@ -23,6 +30,8 @@ export type Project = {
    */
   duration: number;
   tracks: Track[];
+  /** Optional named markers on the sequence ruler. */
+  markers?: Marker[];
 };
 
 export type SourceMeta = {

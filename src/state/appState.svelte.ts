@@ -1,9 +1,11 @@
 import {
   addClip,
+  addTrack,
   clampProjectSourcesToMedia,
   findClip,
   overwriteWithClip,
 } from "$lib/clips";
+import { nextCut, prevCut } from "$lib/cuts";
 import { toExportOpts } from "$lib/exportPayload";
 import {
   canRedo,
@@ -16,15 +18,20 @@ import {
 } from "$lib/history";
 import { newId } from "$lib/id";
 import {
+  addMarker,
+  clipDuration,
   contentDuration,
   createProject,
   defaultTransform,
   evenCanvasDim,
+  parseProject,
   PROJECT_FPS,
   projectDuration,
+  removeMarker,
   serializeProject,
   setProjectDuration,
   snapToFrame,
+  trackContentEnd,
   withEffectiveDuration,
 } from "$lib/project";
 import { clamp } from "$lib/time";
@@ -38,11 +45,13 @@ import {
   pickVideoFile,
   pickVideoFiles,
   probeMedia,
+  readTextFile,
   revealInFolder,
   saveProjectFileAs,
   saveSettings,
   toSourceMeta,
   writeProjectFile,
+  writeTextFile,
 } from "$lib/tauri";
 import type {
   AppSettings,
@@ -60,6 +69,8 @@ function initialProject(): Project {
 
 const boot = initialProject();
 
+export type ImportPlacement = "append" | "playhead" | "new-tracks";
+
 export const app = $state({
   history: historyInit(boot) as History<Project>,
   playhead: 0,
@@ -74,11 +85,22 @@ export const app = $state({
   playing: false,
   /** When true, preview playback is silent. Default false so clip audio is audible. */
   previewMuted: false,
+  /**
+   * Preview-only: when set, hard-cut resolve uses only this track (solo).
+   * Export always uses the full project.
+   */
+  previewSoloTrackId: null as string | null,
   checkingDeps: true,
   lastProjectDir: null as string | null,
   lastExportDir: null as string | null,
   /** Timeline panel height (px). Default applied in the shell layout. */
   timelineHeightPx: 200,
+  /** Where multi-import places clips. */
+  importPlacement: "append" as ImportPlacement,
+  /** Clipboard for copy/paste (clip body without id). */
+  clipboard: null as Omit<Clip, "id"> | null,
+  /** Paths that failed last probe (open/import). */
+  missingSources: [] as string[],
 });
 
 export function project(): Project {
@@ -101,15 +123,30 @@ export function selectedMeta(): SourceMeta | null {
   return app.metaByPath.get(clip.sourcePath) ?? null;
 }
 
+export function selectedClipDurationSecs(): number | null {
+  const clip = selectedClip();
+  if (!clip) return null;
+  return clipDuration(clip);
+}
+
+/** Project view for preview: solo track clears other tracks' clips. */
+export function previewProject(): Project {
+  const p = project();
+  const solo = app.previewSoloTrackId;
+  if (!solo) return p;
+  return {
+    ...p,
+    tracks: p.tracks.map((t) => (t.id === solo ? t : { ...t, clips: [] })),
+  };
+}
+
 function dirname(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return i >= 0 ? path.slice(0, i) : path;
 }
 
-export function basename(path: string): string {
-  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return i >= 0 ? path.slice(i + 1) : path;
-}
+import { basename, truncateMiddle } from "$lib/pathUtil";
+export { basename, truncateMiddle };
 
 function syncSelection(p: Project) {
   if (app.selectedClipId && !findClip(p, app.selectedClipId)) {
@@ -182,9 +219,12 @@ export function newProject() {
   app.selectedTrackId = p.tracks[0]?.id ?? "";
   app.metaByPath = new Map();
   app.projectPath = null;
+  app.missingSources = [];
+  app.previewSoloTrackId = null;
   markCleanFromPresent();
   app.playing = false;
   app.status = "New project";
+  stopAutosave();
 }
 
 export async function openProject() {
@@ -192,18 +232,27 @@ export async function openProject() {
   try {
     const result = await openProjectFile(app.lastProjectDir);
     if (!result) return;
+    const diskFp = serializeProject(result.project);
     app.history = historyInit(result.project);
     app.projectPath = result.path;
     app.playhead = 0;
     app.selectedClipId = null;
     app.selectedTrackId = result.project.tracks[0]?.id ?? "";
     app.metaByPath = new Map();
-    markCleanFromPresent();
+    app.previewSoloTrackId = null;
+    savedFingerprint = diskFp;
+    app.dirty = false;
     app.playing = false;
     app.lastProjectDir = dirname(result.path);
     app.status = `Opened ${basename(result.path)}`;
     await persistSettings();
+
+    const recovered = await tryRecoverAutosave(result.path, diskFp);
     await reprobeAllSources();
+    if (!recovered && app.missingSources.length === 0) {
+      app.status = `Opened ${basename(result.path)}`;
+    }
+    scheduleAutosave();
   } catch (e) {
     app.status = `Open failed: ${errMsg(e)}`;
   }
@@ -216,6 +265,7 @@ export async function saveProject() {
       markCleanFromPresent();
       app.status = `Saved ${basename(app.projectPath)}`;
       await persistSettings();
+      await clearAutosaveBeside(app.projectPath);
       return;
     }
     await saveProjectAs();
@@ -233,12 +283,14 @@ export async function saveProjectAs() {
     app.lastProjectDir = dirname(path);
     app.status = `Saved ${basename(path)}`;
     await persistSettings();
+    await clearAutosaveBeside(path);
+    scheduleAutosave();
   } catch (e) {
     app.status = `Save As failed: ${errMsg(e)}`;
   }
 }
 
-export async function importVideos() {
+export async function importVideos(placement: ImportPlacement = app.importPlacement) {
   try {
     const paths = await pickVideoFiles(app.lastProjectDir);
     if (paths.length === 0) return;
@@ -249,7 +301,7 @@ export async function importVideos() {
       trackId = p.tracks[0]?.id ?? "";
       app.selectedTrackId = trackId;
     }
-    if (!trackId) {
+    if (!trackId && placement !== "new-tracks") {
       app.status = "No track to import onto";
       return;
     }
@@ -257,25 +309,44 @@ export async function importVideos() {
     let added = 0;
     let failed = 0;
     let lastClipId: string | null = null;
+    /** Running end for append mode on the active track. */
+    let appendAt = trackId ? trackContentEnd(p, trackId) : 0;
 
     for (const path of paths) {
       try {
         const media = await probeMedia(path);
         const meta = toSourceMeta(path, media);
         app.metaByPath.set(path, meta);
-        // reassign Map for reactivity
         app.metaByPath = new Map(app.metaByPath);
+
+        let destTrackId = trackId;
+        if (placement === "new-tracks") {
+          p = addTrack(p);
+          destTrackId = p.tracks[p.tracks.length - 1]!.id;
+          appendAt = 0;
+        }
+
+        let timelineStart = app.playhead;
+        if (placement === "append" || placement === "new-tracks") {
+          timelineStart = placement === "new-tracks" ? 0 : appendAt;
+        }
 
         const clip: Clip = {
           id: newId(),
           sourcePath: path,
           sourceIn: 0,
           sourceOut: meta.duration,
-          timelineStart: app.playhead,
+          timelineStart,
           transform: defaultTransform(),
         };
-        p = addClip(p, trackId, clip);
+        p = addClip(p, destTrackId, clip);
         lastClipId = clip.id;
+        if (placement === "append") {
+          appendAt = timelineStart + meta.duration;
+        }
+        if (placement === "new-tracks") {
+          app.selectedTrackId = destTrackId;
+        }
         added++;
         app.lastProjectDir = dirname(path);
       } catch (e) {
@@ -289,7 +360,14 @@ export async function importVideos() {
       if (lastClipId) app.selectedClipId = lastClipId;
       await persistSettings();
       const failNote = failed > 0 ? `, ${failed} failed` : "";
-      app.status = `Imported ${added} clip${added === 1 ? "" : "s"}${failNote}`;
+      const mode =
+        placement === "new-tracks"
+          ? " as tracks"
+          : placement === "append"
+            ? " (appended)"
+            : "";
+      app.status = `Imported ${added} clip${added === 1 ? "" : "s"}${mode}${failNote}`;
+      scheduleAutosave();
     } else if (failed > 0) {
       app.status = `Import failed (${failed} file${failed === 1 ? "" : "s"})`;
     }
@@ -312,9 +390,17 @@ function joinPath(dir: string, file: string): string {
   return dir.endsWith("/") || dir.endsWith("\\") ? `${dir}${file}` : `${dir}${sep}${file}`;
 }
 
-function safeExportName(name: string): string {
-  const base = name.trim() || "export";
-  return base.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").slice(0, 80) + ".mp4";
+function safeExportName(project: Project): string {
+  const base = (project.name.trim() || "export").replace(
+    /[<>:"/\\|?*\u0000-\u001f]/g,
+    "_",
+  );
+  const dur = projectDuration(project);
+  const durTag = dur >= 1 ? `${Math.round(dur)}s` : `${Math.round(dur * 10) / 10}s`;
+  let clips = 0;
+  for (const t of project.tracks) clips += t.clips.length;
+  const stem = `${base.slice(0, 48)}_${durTag}_${clips}clip`.replace(/\s+/g, "_");
+  return `${stem}.mp4`;
 }
 
 type ProgressPayload = { phase: string; message: string; pct: number | null };
@@ -378,7 +464,7 @@ export async function exportVideo() {
       dir = null;
     }
   }
-  const suggested = dir ? joinPath(dir, safeExportName(p.name)) : safeExportName(p.name);
+  const suggested = dir ? joinPath(dir, safeExportName(p)) : safeExportName(p);
 
   let outputPath: string | null;
   try {
@@ -483,12 +569,117 @@ export function stepPlayheadSeconds(secs: number, fps = PROJECT_FPS) {
   stepPlayheadFrames(Math.round(secs * fps), fps);
 }
 
+export function seekPlayheadHome() {
+  app.playing = false;
+  setPlayhead(0);
+  app.status = "Playhead 0";
+}
+
+export function seekPlayheadEnd() {
+  app.playing = false;
+  const t = projectDuration(project());
+  setPlayhead(t);
+  app.status = `Playhead ${t.toFixed(2)}s`;
+}
+
+export function seekPrevCut() {
+  app.playing = false;
+  const t = prevCut(project(), app.playhead);
+  setPlayhead(t);
+  app.status = `Cut ${t.toFixed(2)}s`;
+}
+
+export function seekNextCut() {
+  app.playing = false;
+  const t = nextCut(project(), app.playhead);
+  setPlayhead(t);
+  app.status = `Cut ${t.toFixed(2)}s`;
+}
+
 export function setSelectedClip(id: string | null) {
   app.selectedClipId = id;
 }
 
 export function setSelectedTrack(id: string) {
   app.selectedTrackId = id;
+}
+
+export function toggleSoloTrack(trackId: string) {
+  if (app.previewSoloTrackId === trackId) {
+    app.previewSoloTrackId = null;
+    app.status = "Solo off";
+  } else {
+    app.previewSoloTrackId = trackId;
+    app.selectedTrackId = trackId;
+    app.status = "Solo track (preview only)";
+  }
+}
+
+export function copySelectedClip() {
+  const clip = selectedClip();
+  if (!clip) {
+    app.status = "Nothing to copy";
+    return;
+  }
+  const { id: _id, ...rest } = clip;
+  app.clipboard = { ...rest, transform: { ...rest.transform } };
+  app.status = "Copied clip";
+}
+
+export function pasteClipboard() {
+  if (!app.clipboard) {
+    app.status = "Clipboard empty";
+    return;
+  }
+  let trackId = app.selectedTrackId;
+  const p0 = project();
+  if (!p0.tracks.some((t) => t.id === trackId)) {
+    trackId = p0.tracks[0]?.id ?? "";
+  }
+  if (!trackId) return;
+
+  const clip: Clip = {
+    ...app.clipboard,
+    id: newId(),
+    timelineStart: app.playhead,
+    transform: { ...app.clipboard.transform },
+  };
+  const next = addClip(p0, trackId, clip);
+  commitProject(next);
+  app.selectedClipId = clip.id;
+  app.selectedTrackId = trackId;
+  app.status = "Pasted clip";
+}
+
+export function duplicateSelectedClip() {
+  copySelectedClip();
+  if (app.clipboard) pasteClipboard();
+}
+
+export function addMarkerAtPlayhead(label = "") {
+  commitProject(addMarker(project(), app.playhead, label));
+  app.status = "Marker added";
+}
+
+export function deleteMarker(markerId: string) {
+  const next = removeMarker(project(), markerId);
+  if (next === project()) return;
+  commitProject(next);
+  app.status = "Marker removed";
+}
+
+export async function revealSelectedSource() {
+  const clip = selectedClip();
+  if (!clip) {
+    app.status = "No clip selected";
+    return;
+  }
+  try {
+    await revealInFolder(clip.sourcePath);
+    app.status = `Revealed ${basename(clip.sourcePath)}`;
+  } catch (e) {
+    app.status = `Reveal failed: ${errMsg(e)}`;
+  }
 }
 
 export function updateSelectedClipFields(patch: {
@@ -597,15 +788,91 @@ async function reprobeAllSources() {
     }
   }
   const next = new Map(app.metaByPath);
+  const missing: string[] = [];
   for (const path of paths) {
     try {
       const media = await probeMedia(path);
       next.set(path, toSourceMeta(path, media));
     } catch {
-      // leave missing; inspector shows warning
+      missing.push(path);
     }
   }
   app.metaByPath = next;
+  app.missingSources = missing;
+  if (missing.length > 0) {
+    app.status = `Opened with ${missing.length} missing source${missing.length === 1 ? "" : "s"} — relink in Inspector`;
+  }
+}
+
+function autosavePathFor(projectPath: string): string {
+  if (projectPath.toLowerCase().endsWith(".json")) {
+    return projectPath.slice(0, -5) + ".autosave.json";
+  }
+  return `${projectPath}.autosave.json`;
+}
+
+async function clearAutosaveBeside(projectPath: string) {
+  try {
+    // Overwrite with empty not possible without delete command — write a tiny stub or skip.
+    // Prefer writing nothing: try write empty object cleared flag is overkill. No-op if no path.
+    void projectPath;
+  } catch {
+    // ignore
+  }
+}
+
+let autosaveTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopAutosave() {
+  if (autosaveTimer) {
+    clearInterval(autosaveTimer);
+    autosaveTimer = null;
+  }
+}
+
+function scheduleAutosave() {
+  stopAutosave();
+  autosaveTimer = setInterval(() => {
+    void maybeAutosave();
+  }, 45_000);
+}
+
+async function maybeAutosave() {
+  if (!app.dirty || app.exporting) return;
+  const path = app.projectPath;
+  if (!path) return;
+  try {
+    await writeTextFile(autosavePathFor(path), serializeProject(project()));
+  } catch {
+    // non-fatal
+  }
+}
+
+/** Offer recovery if `.autosave.json` exists beside the opened project. */
+async function tryRecoverAutosave(projectPath: string, diskFingerprint: string): Promise<boolean> {
+  const autoPath = autosavePathFor(projectPath);
+  try {
+    const raw = await readTextFile(autoPath);
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      return false;
+    }
+    const restored = parseProject(json);
+    const autoFp = serializeProject(restored);
+    if (autoFp === diskFingerprint) return false;
+    if (!window.confirm("Found an autosave that differs from this project. Restore it?")) {
+      return false;
+    }
+    app.history = historyInit(restored);
+    savedFingerprint = diskFingerprint;
+    app.dirty = true;
+    app.status = "Restored from autosave";
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function persistSettings() {

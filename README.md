@@ -18,14 +18,14 @@ Part of the Slop pipeline between **[slop-video-downloader](https://github.com/m
 ## Features
 
 - Multi-track timeline: import, move, trim in/out, split at playhead, delete (no ripple)
-- Same-track **overwrite** on move/trim/import (no stacked clips without a fade); higher track wins across tracks; gaps render black
-- Per-clip scale + pan on a user canvas (default 1920×1080)
-- Live preview with transport (play/pause/stop) and transform gizmo
-- Project save/open as JSON with **absolute** source paths
-- Relink missing media from the Inspector
-- Export H.264 + AAC `.mp4` at canvas size, 30 fps, audio always muxed
-- Dependency check for `ffmpeg` with a banner when missing
-- macOS-first (Finder reveal on export)
+- Same-track **overwrite**; higher track wins; gap hatching; per-source clip colors
+- Snap on drag/trim (**Shift** = free); Fit zoom; program-out sequence end
+- Import placement: append / playhead / each file → new track
+- Markers on the ruler; canvas presets + free W×H
+- Preview solo (track label double-click); copy/paste/duplicate
+- Relink + Reveal source; autosave draft beside project file
+- Export H.264 + AAC `.mp4` @ 30 fps (filename includes duration/clip count)
+- Dependency check for `ffmpeg`; macOS-first
 
 ## Requirements
 
@@ -80,15 +80,15 @@ cd src-tauri && cargo test
 
 ## Usage
 
-1. **Import** clips onto the selected track (`Import` or ⌘I).
-2. **Edit** on the timeline: drag to move, edge-drag to trim, **S** to split at playhead, Delete to remove.
-3. **Reframe** in the preview: drag the selected clip to pan; scroll wheel to scale (or use the Inspector).
-4. **Canvas** W×H in the toolbar sets preview and export size.
-5. **Save** the project (`.json` with absolute paths) — reopen later with **Open**.
-6. **Export** → choose an `.mp4` path (defaults under last export dir or `~/Movies/Slop Refs`) → progress in the status line → Finder reveals the file on success.
+1. **Import** clips (`Import` or ⌘I). Default **Place** mode appends on the selected track (gap-free shot list).
+2. **Edit** on the timeline: drag to move (snaps; **Shift** = free), edge-drag to trim, **S** to split, Delete to remove.
+3. **Reframe** in the preview: **Ctrl/⌘-drag** pans the clip on the canvas; **Shift-drag** scales; wheel zooms the **viewport** (not the clip). Fit resets timeline zoom to full width.
+4. **Canvas** presets or W×H in the toolbar set preview and export size.
+5. **Save** the project (`.json` with absolute paths). Dirty projects autosave to `name.autosave.json` beside the project file.
+6. **Export** → MP4 (defaults under last export dir or `~/Movies/Slop Refs`) → Finder reveals on success.
 7. Open that MP4 in **slop-animator** as a video reference layer.
 
-If a source file moved, select the clip → **Relink…** in the Inspector.
+If a source file moved, select the clip → **Relink…** or **Reveal** in the Inspector.
 
 ## Keyboard shortcuts
 
@@ -97,16 +97,29 @@ If a source file moved, select the clip → **Relink…** in the Inspector.
 | Space | Play / pause |
 | ← / → | Step playhead by **1 frame** (30 fps) |
 | Shift+← / → | Step playhead by **1 second** |
+| Home / End | Playhead to start / sequence end |
+| `[` / `]` | Previous / next cut (clip edges + markers) |
+| M | Add marker at playhead |
 | S | Split selected clip at playhead |
 | Delete / Backspace | Delete selected clip |
+| ⌘C / ⌘V / ⌘D | Copy / paste / duplicate clip |
 | ⌘S / Ctrl+S | Save |
 | ⌘⇧S / Ctrl+Shift+S | Save As |
 | ⌘O / Ctrl+O | Open project |
 | ⌘I / Ctrl+I | Import videos |
+| ⌘⇧I | Import each file onto a new track |
 | ⌘Z / Ctrl+Z | Undo |
 | ⌘⇧Z / Ctrl+Shift+Z | Redo |
+| Shift (while dragging clip) | Disable snap |
 
 (Shortcuts are ignored while typing in inputs.)
+
+### Timeline / preview notes
+
+- **Snap** to clip edges, markers, playhead, and sequence ends.
+- **Program out:** drag the blue sequence-end handle left to trim/delete media past that time (applied on release).
+- **Solo:** double-click a track label (preview only; export still uses all tracks).
+- **Markers:** click to seek; Alt+click to remove.
 
 ## Project files
 

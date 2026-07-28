@@ -1,18 +1,20 @@
 <script lang="ts">
   import Film from "@lucide/svelte/icons/film";
+  import FolderOpen from "@lucide/svelte/icons/folder-open";
   import Link2 from "@lucide/svelte/icons/link-2";
   import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Volume2 from "@lucide/svelte/icons/volume-2";
   import VolumeX from "@lucide/svelte/icons/volume-x";
   import { clipColorSolid } from "$lib/clipColor";
-  import { formatTimestamp } from "$lib/time";
+  import { formatTimestamp, roundTo } from "$lib/time";
   import type { Clip, SourceMeta } from "$lib/types";
 
   interface Props {
     clip: Clip | null;
     meta: SourceMeta | null;
     basename: (path: string) => string;
+    truncateMiddle: (name: string, maxLen?: number) => string;
     onUpdate: (patch: {
       sourceIn?: number;
       sourceOut?: number;
@@ -21,14 +23,24 @@
     }) => void;
     onResetTransform: () => void;
     onRelink: () => void;
+    onReveal: () => void;
   }
 
-  let { clip, meta, basename, onUpdate, onResetTransform, onRelink }: Props = $props();
+  let {
+    clip,
+    meta,
+    basename,
+    truncateMiddle,
+    onUpdate,
+    onResetTransform,
+    onRelink,
+    onReveal,
+  }: Props = $props();
 
   const ICON = 16;
 
-  function num(e: Event): number {
-    return Number((e.target as HTMLInputElement).value);
+  function num(e: Event, places = 2): number {
+    return roundTo(Number((e.target as HTMLInputElement).value), places);
   }
 </script>
 
@@ -48,7 +60,7 @@
           aria-hidden="true"
         ></span>
         <Film size={14} strokeWidth={2} class="source-icon" aria-hidden="true" />
-        <span>{basename(clip.sourcePath)}</span>
+        <span class="source-name">{truncateMiddle(basename(clip.sourcePath), 40)}</span>
       </span>
       {#if !meta}
         <span class="warn">
@@ -69,10 +81,21 @@
           {/if}
         </span>
       {/if}
-      <button type="button" class="ghost" onclick={onRelink}>
-        <Link2 size={ICON} strokeWidth={2} aria-hidden="true" />
-        <span>Relink…</span>
-      </button>
+      <div class="btn-row">
+        <button
+          type="button"
+          class="ghost"
+          onclick={onRelink}
+          title="Choose a new file for this clip’s source path"
+        >
+          <Link2 size={ICON} strokeWidth={2} aria-hidden="true" />
+          <span>Relink…</span>
+        </button>
+        <button type="button" class="ghost" onclick={onReveal} title="Reveal source in Finder">
+          <FolderOpen size={ICON} strokeWidth={2} aria-hidden="true" />
+          <span>Reveal</span>
+        </button>
+      </div>
     </div>
 
     <div class="grid">
@@ -82,8 +105,8 @@
           type="number"
           step="0.01"
           min="0"
-          value={clip.sourceIn}
-          onchange={(e) => onUpdate({ sourceIn: num(e) })}
+          value={roundTo(clip.sourceIn, 2)}
+          onchange={(e) => onUpdate({ sourceIn: num(e, 2) })}
         />
       </label>
       <label>
@@ -92,8 +115,8 @@
           type="number"
           step="0.01"
           min="0"
-          value={clip.sourceOut}
-          onchange={(e) => onUpdate({ sourceOut: num(e) })}
+          value={roundTo(clip.sourceOut, 2)}
+          onchange={(e) => onUpdate({ sourceOut: num(e, 2) })}
         />
       </label>
       <label>
@@ -102,13 +125,16 @@
           type="number"
           step="0.01"
           min="0"
-          value={clip.timelineStart}
-          onchange={(e) => onUpdate({ timelineStart: num(e) })}
+          value={roundTo(clip.timelineStart, 2)}
+          onchange={(e) => onUpdate({ timelineStart: num(e, 2) })}
         />
       </label>
       <div class="ro">
         <span class="label">Duration</span>
-        <span class="value mono">{formatTimestamp(clip.sourceOut - clip.sourceIn)}</span>
+        <span class="value mono"
+          >{formatTimestamp(clip.sourceOut - clip.sourceIn)}
+          <span class="muted">({roundTo(clip.sourceOut - clip.sourceIn, 2)}s)</span></span
+        >
       </div>
     </div>
 
@@ -121,8 +147,8 @@
           step="0.05"
           min="0.05"
           max="8"
-          value={clip.transform.scale}
-          onchange={(e) => onUpdate({ transform: { scale: num(e) } })}
+          value={roundTo(clip.transform.scale, 2)}
+          onchange={(e) => onUpdate({ transform: { scale: num(e, 2) } })}
         />
       </label>
       <label>
@@ -130,8 +156,8 @@
         <input
           type="number"
           step="1"
-          value={clip.transform.x}
-          onchange={(e) => onUpdate({ transform: { x: num(e) } })}
+          value={roundTo(clip.transform.x, 0)}
+          onchange={(e) => onUpdate({ transform: { x: num(e, 0) } })}
         />
       </label>
       <label>
@@ -139,12 +165,17 @@
         <input
           type="number"
           step="1"
-          value={clip.transform.y}
-          onchange={(e) => onUpdate({ transform: { y: num(e) } })}
+          value={roundTo(clip.transform.y, 0)}
+          onchange={(e) => onUpdate({ transform: { y: num(e, 0) } })}
         />
       </label>
     </div>
-    <button type="button" class="ghost reset" onclick={onResetTransform}>
+    <button
+      type="button"
+      class="ghost reset"
+      onclick={onResetTransform}
+      title="Reset scale and position to default"
+    >
       <RotateCcw size={ICON} strokeWidth={2} aria-hidden="true" />
       <span>Reset transform</span>
     </button>
@@ -180,9 +211,18 @@
   }
 
   .source-row {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 0.35rem;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .source-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .color-swatch {
@@ -216,6 +256,18 @@
   .field {
     display: flex;
     flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .btn-row :global(button) {
+    display: inline-flex;
+    align-items: center;
     gap: 0.3rem;
   }
 

@@ -1,5 +1,5 @@
 import { newId } from "./id";
-import type { Clip, ClipTransform, Project, Track } from "./types";
+import type { Clip, ClipTransform, Marker, Project, Track } from "./types";
 
 export const DEFAULT_CANVAS = { width: 1920, height: 1080 };
 /** Default empty-sequence length (seconds). */
@@ -38,7 +38,20 @@ export function createProject(name = "Untitled"): Project {
     canvas: { ...DEFAULT_CANVAS },
     duration: DEFAULT_DURATION,
     tracks,
+    markers: [],
   };
+}
+
+/** End time of the last clip on a track (0 if empty). */
+export function trackContentEnd(project: Project, trackId: string): number {
+  const track = project.tracks.find((t) => t.id === trackId);
+  if (!track) return 0;
+  let max = 0;
+  for (const clip of track.clips) {
+    const end = clip.timelineStart + clipDuration(clip);
+    if (end > max) max = end;
+  }
+  return max;
 }
 
 export function clipDuration(c: Clip): number {
@@ -227,12 +240,14 @@ export function parseProject(json: unknown): Project {
   const tracks = p.tracks.map((track, i) => parseTrack(track, `project.tracks[${i}]`));
   const width = evenCanvasDim(canvas.width);
   const height = evenCanvasDim(canvas.height);
+  const markers = parseMarkers(p.markers);
   const content = contentDuration({
     version: 1,
     name: p.name,
     canvas: { width, height },
     duration: 0,
     tracks,
+    markers,
   });
   // Back-compat: missing duration → fit content (0 if empty)
   let duration = content;
@@ -245,7 +260,40 @@ export function parseProject(json: unknown): Project {
     canvas: { width, height },
     duration,
     tracks,
+    markers,
   };
+}
+
+function parseMarkers(raw: unknown): Marker[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) return [];
+  const out: Marker[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== "object") continue;
+    const m = item as Record<string, unknown>;
+    if (typeof m.id !== "string" || m.id.length === 0) continue;
+    if (!isFiniteNumber(m.t) || m.t < 0) continue;
+    const label = typeof m.label === "string" ? m.label : "";
+    out.push({ id: m.id, t: m.t, label });
+  }
+  return out;
+}
+
+export function addMarker(project: Project, t: number, label = ""): Project {
+  const markers = [...(project.markers ?? [])];
+  markers.push({
+    id: newId(),
+    t: Math.max(0, t),
+    label: label.trim() || `M${markers.length + 1}`,
+  });
+  markers.sort((a, b) => a.t - b.t);
+  return { ...project, markers };
+}
+
+export function removeMarker(project: Project, markerId: string): Project {
+  const markers = (project.markers ?? []).filter((m) => m.id !== markerId);
+  if (markers.length === (project.markers ?? []).length) return project;
+  return { ...project, markers };
 }
 
 /**

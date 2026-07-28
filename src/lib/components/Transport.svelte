@@ -43,7 +43,7 @@
       <Play size={ICON} strokeWidth={2} aria-hidden="true" />
     {/if}
   </button>
-  <button type="button" class="ghost" onclick={onStop} title="Stop" aria-label="Stop">
+  <button type="button" class="ghost" onclick={onStop} title="Stop and return to start" aria-label="Stop">
     <Square size={15} strokeWidth={2.25} aria-hidden="true" />
   </button>
   <button

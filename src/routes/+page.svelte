@@ -8,25 +8,36 @@
   import Toolbar from "$lib/components/Toolbar.svelte";
   import Transport from "$lib/components/Transport.svelte";
   import {
+    addMarkerAtPlayhead,
     app,
     basename,
+    truncateMiddle,
     canExport,
     canRedo,
     canUndo,
     clampTimelineHeight,
+    copySelectedClip,
     duration,
+    duplicateSelectedClip,
     exportVideo,
     importVideos,
     initApp,
     newProject,
     openProject,
+    pasteClipboard,
     project,
     refreshDeps,
     relinkSelected,
     resetSelectedTransform,
+    revealSelectedSource,
     saveProject,
     saveProjectAs,
+    seekNextCut,
+    seekPlayheadEnd,
+    seekPlayheadHome,
+    seekPrevCut,
     selectedClip,
+    selectedClipDurationSecs,
     selectedMeta,
     setCanvasSize,
     setPlayhead,
@@ -42,6 +53,7 @@
   const clip = $derived(selectedClip());
   const meta = $derived(selectedMeta());
   const dur = $derived(duration());
+  const clipDur = $derived(selectedClipDurationSecs());
   const undoOk = $derived(canUndo(app.history));
   const redoOk = $derived(canRedo(app.history));
   const exportOk = $derived(canExport());
@@ -89,7 +101,8 @@
     }
     if (mod && event.key.toLowerCase() === "i") {
       event.preventDefault();
-      void importVideos();
+      // Shift+⌘I → each file new track; else current placement mode
+      void importVideos(event.shiftKey ? "new-tracks" : app.importPlacement);
       return;
     }
     if (mod && event.key.toLowerCase() === "z") {
@@ -98,10 +111,51 @@
       else undo();
       return;
     }
+    if (mod && event.key.toLowerCase() === "c") {
+      event.preventDefault();
+      copySelectedClip();
+      return;
+    }
+    if (mod && event.key.toLowerCase() === "v") {
+      event.preventDefault();
+      pasteClipboard();
+      return;
+    }
+    if (mod && event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      duplicateSelectedClip();
+      return;
+    }
 
     if (event.key === " " || event.code === "Space") {
       event.preventDefault();
       togglePlay();
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      seekPlayheadHome();
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      seekPlayheadEnd();
+      return;
+    }
+    if (event.key === "[" || event.key === "PageUp") {
+      event.preventDefault();
+      seekPrevCut();
+      return;
+    }
+    if (event.key === "]" || event.key === "PageDown") {
+      event.preventDefault();
+      seekNextCut();
+      return;
+    }
+    if (event.key.toLowerCase() === "m" && !mod) {
+      event.preventDefault();
+      addMarkerAtPlayhead();
       return;
     }
 
@@ -173,6 +227,7 @@
     canExport={exportOk}
     canUndo={undoOk}
     canRedo={redoOk}
+    importPlacement={app.importPlacement}
     onNew={newProject}
     onOpen={() => void openProject()}
     onSave={() => void saveProject()}
@@ -182,10 +237,23 @@
     onUndo={undo}
     onRedo={redo}
     onCanvasChange={setCanvasSize}
+    onImportPlacementChange={(mode) => {
+      app.importPlacement = mode;
+      app.status =
+        mode === "append"
+          ? "Import: append on track"
+          : mode === "playhead"
+            ? "Import: at playhead"
+            : "Import: each file → new track";
+    }}
   />
 
   <StatusLine
-    status={app.status}
+    status={app.missingSources.length > 0
+      ? `${app.status} · ${app.missingSources.length} missing media`
+      : clipDur != null
+        ? `${app.status} · clip ${clipDur.toFixed(2)}s`
+        : app.status}
     dirty={app.dirty}
     projectPath={app.projectPath}
     projectName={p.name}
@@ -212,9 +280,11 @@
       {clip}
       {meta}
       {basename}
+      {truncateMiddle}
       onUpdate={updateSelectedClipFields}
       onResetTransform={resetSelectedTransform}
       onRelink={() => void relinkSelected()}
+      onReveal={() => void revealSelectedSource()}
     />
   </div>
 
@@ -252,6 +322,13 @@
     gap: 0.45rem;
     padding: 0.65rem 0.85rem 0.65rem;
     box-sizing: border-box;
+    /* Let toolbar menus stack above preview/status without being covered */
+    isolation: isolate;
+  }
+
+  .shell :global(header.toolbar) {
+    flex: 0 0 auto;
+    z-index: 40;
   }
 
   .shell.resizing {

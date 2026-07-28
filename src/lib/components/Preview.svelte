@@ -16,6 +16,7 @@
   import type { Clip, ClipTransform, Project } from "$lib/types";
   import {
     app,
+    previewProject,
     project,
     replaceClip,
     setPlayhead,
@@ -177,7 +178,7 @@
 
   function paint() {
     if (!canvasEl) return;
-    const hit = clipAtTime(project(), app.playhead);
+    const hit = clipAtTime(previewProject(), app.playhead);
 
     // Timeline gap — show real black
     if (!hit) {
@@ -358,7 +359,7 @@
   function onDecoderFrame() {
     if (app.playing) return;
     bindSlots();
-    const hit = clipAtTime(project(), app.playhead);
+    const hit = clipAtTime(previewProject(), app.playhead);
     if (!hit) return;
     const active = activeSlot();
     if (active.path === hit.clip.sourcePath && active.el) {
@@ -376,7 +377,7 @@
     const gen = ++syncGen;
     bindSlots();
 
-    const hit = clipAtTime(project(), app.playhead);
+    const hit = clipAtTime(previewProject(), app.playhead);
     const active = activeSlot();
     standbySlot().el?.pause();
 
@@ -405,7 +406,7 @@
 
   /** Warm standby with the upcoming clip at its sourceIn. */
   function schedulePrefetch(fromClip: Clip) {
-    const proj = project();
+    const proj = previewProject();
     const next = nextClipAfter(proj, fromClip);
     if (!next) {
       prefetchClipId = null;
@@ -530,8 +531,8 @@
     const wallDt = Math.min(0.25, (now - lastRafMs) / 1000);
     lastRafMs = now;
 
-    const proj = project();
-    const totalDur = projectDuration(proj);
+    const proj = previewProject();
+    const totalDur = projectDuration(project());
     if (!(totalDur > 0)) {
       stopPlayback(0, "Paused");
       return;
@@ -739,7 +740,7 @@
    * not a covered selection on a lower track.
    */
   function transformTargetClip(): Clip | null {
-    return clipAtTime(project(), app.playhead)?.clip ?? null;
+    return clipAtTime(previewProject(), app.playhead)?.clip ?? null;
   }
 
   function startViewPan(e: PointerEvent) {

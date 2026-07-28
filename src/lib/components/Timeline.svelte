@@ -20,17 +20,25 @@
     projectDuration,
     setProjectDuration,
   } from "$lib/project";
+  import {
+    collectSnapTimes,
+    DEFAULT_SNAP_THRESHOLD,
+    snapClipStart,
+    snapTime,
+  } from "$lib/snap";
   import { clamp, formatTimestamp } from "$lib/time";
   import type { Project } from "$lib/types";
   import {
     app,
     basename,
     commitProject,
+    deleteMarker,
     project,
     setPlayhead,
     setTimelineDuration,
     stepPlayheadFrames,
     stepPlayheadSeconds,
+    toggleSoloTrack,
   } from "../../state/appState.svelte";
 
   const TRACK_H = 40;
@@ -395,9 +403,22 @@
     didMove = true;
 
     const dt = dx / pxPerSecond;
+    // Shift = free (no snap). Threshold scales slightly with zoom.
+    const snapOn = !e.shiftKey;
+    const thresh = Math.max(DEFAULT_SNAP_THRESHOLD, 8 / pxPerSecond);
+    const targets = snapOn
+      ? collectSnapTimes(dragBefore, {
+          excludeClipId: dragClipId,
+          playhead: app.playhead,
+        })
+      : [];
 
     if (dragKind === "move") {
-      const newStart = Math.max(0, startTimelineStart + dt);
+      let newStart = Math.max(0, startTimelineStart + dt);
+      if (snapOn) {
+        const dur = startSourceOut - startSourceIn;
+        newStart = snapClipStart(newStart, dur, targets, thresh);
+      }
       const toTrackId = trackIdAtClientY(e.clientY) ?? startTrackId;
       setPresentLive(moveClip(dragBefore, dragClipId, newStart, toTrackId));
       if (toTrackId) app.selectedTrackId = toTrackId;
@@ -405,7 +426,14 @@
     }
 
     if (dragKind === "trim-in") {
-      setPresentLive(trimClipIn(dragBefore, dragClipId, startSourceIn + dt));
+      let newIn = startSourceIn + dt;
+      if (snapOn) {
+        // Map source-in change to timeline left edge and snap that edge.
+        const rawStart = startTimelineStart + (newIn - startSourceIn);
+        const snappedStart = snapTime(rawStart, targets, thresh);
+        newIn = startSourceIn + (snappedStart - startTimelineStart);
+      }
+      setPresentLive(trimClipIn(dragBefore, dragClipId, newIn));
       return;
     }
 
@@ -416,6 +444,11 @@
         const meta = app.metaByPath.get(clip.sourcePath);
         if (meta && Number.isFinite(meta.duration)) {
           newOut = Math.min(newOut, meta.duration);
+        }
+        if (snapOn) {
+          const rawEnd = startTimelineStart + (newOut - startSourceIn);
+          const snappedEnd = snapTime(rawEnd, targets, thresh);
+          newOut = startSourceIn + (snappedEnd - startTimelineStart);
         }
       }
       setPresentLive(trimClipOut(dragBefore, dragClipId, newOut));
@@ -600,7 +633,13 @@
           <span>Fit</span>
         </button>
       </label>
-      <button type="button" class="ghost" onclick={onAddTrack}>
+      <button
+        type="button"
+        class="ghost"
+        onclick={onAddTrack}
+        title="Add video track"
+        aria-label="Add track"
+      >
         <Plus size={16} strokeWidth={2} aria-hidden="true" />
         <span>Track</span>
       </button>
@@ -613,11 +652,16 @@
         <div
           class="label-row"
           class:selected={track.id === app.selectedTrackId}
+          class:solo={app.previewSoloTrackId === track.id}
           style:height="{TRACK_H}px"
           role="button"
           tabindex="0"
-          title="Select track {track.name}"
+          title="Click select · double-click solo (preview only)"
           onclick={() => selectTrack(track.id)}
+          ondblclick={(e) => {
+            e.preventDefault();
+            toggleSoloTrack(track.id);
+          }}
           onkeydown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
@@ -625,7 +669,10 @@
             }
           }}
         >
-          {track.name}
+          <span class="track-name">{track.name}</span>
+          {#if app.previewSoloTrackId === track.id}
+            <span class="solo-badge" aria-label="Solo">S</span>
+          {/if}
         </div>
       {/each}
     </div>
@@ -656,6 +703,28 @@
                 <span class="tick-label">{formatTimestamp(t)}</span>
               </div>
             {/each}
+            {#each p.markers ?? [] as marker (marker.id)}
+              <button
+                type="button"
+                class="marker"
+                style:left="{marker.t * pxPerSecond}px"
+                title="{marker.label} @ {formatTimestamp(marker.t)} — click seek, Alt+click remove"
+                aria-label="Marker {marker.label}"
+                onpointerdown={(e) => {
+                  e.stopPropagation();
+                  if (e.altKey) {
+                    e.preventDefault();
+                    deleteMarker(marker.id);
+                    return;
+                  }
+                  setPlayhead(marker.t);
+                  app.status = `Marker ${marker.label}`;
+                }}
+              >
+                <span class="marker-flag" aria-hidden="true"></span>
+                <span class="marker-label">{marker.label}</span>
+              </button>
+            {/each}
           </div>
 
           <!-- Tracks / clips -->
@@ -664,6 +733,7 @@
               <div
                 class="lane"
                 class:selected={track.id === app.selectedTrackId}
+                class:has-gaps={track.clips.length > 0}
                 data-track-id={track.id}
                 style:height="{TRACK_H}px"
                 role="presentation"
@@ -671,13 +741,39 @@
               >
                 {#each track.clips as clip (clip.id)}
                   {@const dur = clipDuration(clip)}
-                  {@const left = clip.timelineStart * pxPerSecond}
-                  {@const width = Math.max(dur * pxPerSecond, 4)}
+                  {@const usedLeft = clip.timelineStart * pxPerSecond}
+                  {@const usedW = Math.max(dur * pxPerSecond, 4)}
+                  {@const mediaDur = app.metaByPath.get(clip.sourcePath)?.duration ?? 0}
+                  {@const preSec = clip.sourceIn > 0 ? clip.sourceIn : 0}
+                  {@const postSec =
+                    mediaDur > clip.sourceOut ? mediaDur - clip.sourceOut : 0}
+                  {@const preW = preSec * pxPerSecond}
+                  {@const postW = postSec * pxPerSecond}
+                  {@const colorVars = clipColorCssVars(clip.sourcePath)}
+                  <!-- Trimmed source still on disk: dim handles around the used range -->
+                  {#if preW >= 2}
+                    <div
+                      class="clip-handle left"
+                      class:active={clip.id === app.selectedClipId}
+                      style="{colorVars}; left: {usedLeft - preW}px; width: {preW}px"
+                      title="Trimmed head ({preSec.toFixed(2)}s) — drag left edge of clip to restore"
+                      aria-hidden="true"
+                    ></div>
+                  {/if}
+                  {#if postW >= 2}
+                    <div
+                      class="clip-handle right"
+                      class:active={clip.id === app.selectedClipId}
+                      style="{colorVars}; left: {usedLeft + usedW}px; width: {postW}px"
+                      title="Trimmed tail ({postSec.toFixed(2)}s) — drag right edge of clip to restore"
+                      aria-hidden="true"
+                    ></div>
+                  {/if}
                   <div
                     class="clip"
                     class:active={clip.id === app.selectedClipId}
                     class:dragging={dragClipId === clip.id}
-                    style="{clipColorCssVars(clip.sourcePath)}; left: {left}px; width: {width}px"
+                    style="{colorVars}; left: {usedLeft}px; width: {usedW}px"
                     title={clip.sourcePath}
                     role="button"
                     tabindex="0"
@@ -931,6 +1027,90 @@
     background: rgba(91, 140, 255, 0.1);
   }
 
+  .label-row.solo {
+    color: var(--warn);
+    background: rgba(212, 160, 23, 0.12);
+  }
+
+  .label-row .track-name {
+    pointer-events: none;
+  }
+
+  .solo-badge {
+    margin-left: 0.2rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--warn);
+    pointer-events: none;
+  }
+
+  /* Empty timeline (no media on this track) — not the same as trimmed handles */
+  .lane.has-gaps {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 6px,
+      rgba(255, 255, 255, 0.025) 6px,
+      rgba(255, 255, 255, 0.025) 12px
+    );
+  }
+
+  /* Selection tint must layer with hatch (shorthand `background` would wipe it). */
+  .lane.has-gaps.selected {
+    background-color: rgba(91, 140, 255, 0.06);
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 6px,
+      rgba(255, 255, 255, 0.035) 6px,
+      rgba(255, 255, 255, 0.035) 12px
+    );
+  }
+
+  /**
+   * Unused source before in / after out, aligned to the active clip.
+   * Visual only (no drag) — trim edges on the solid clip restore this media.
+   */
+  .clip-handle {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    box-sizing: border-box;
+    border-radius: 3px;
+    pointer-events: none;
+    z-index: 0;
+    background: hsla(
+      var(--clip-h),
+      calc(var(--clip-s) * 1%),
+      calc(var(--clip-l) * 1%),
+      0.12
+    );
+    border: 1px dashed hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.4);
+    opacity: 0.9;
+  }
+
+  .clip-handle.left {
+    border-right: none;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .clip-handle.right {
+    border-left: none;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  .clip-handle.active {
+    background: hsla(
+      var(--clip-h),
+      calc(var(--clip-s) * 1%),
+      calc(var(--clip-l) * 1%),
+      0.18
+    );
+    border-color: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.55);
+  }
+
   .scroll {
     flex: 1 1 auto;
     min-width: 0;
@@ -1003,6 +1183,43 @@
     white-space: nowrap;
   }
 
+  .marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 12px;
+    margin-left: -6px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    z-index: 3;
+  }
+
+  .marker-flag {
+    position: absolute;
+    top: 2px;
+    left: 5px;
+    width: 0;
+    height: 0;
+    border-left: 5px solid var(--warn);
+    border-right: 0 solid transparent;
+    border-bottom: 7px solid transparent;
+  }
+
+  .marker-label {
+    position: absolute;
+    top: 12px;
+    left: 2px;
+    max-width: 4rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.65rem;
+    color: var(--warn);
+    pointer-events: none;
+  }
+
   .lanes {
     position: relative;
   }
@@ -1010,11 +1227,11 @@
   .lane {
     position: relative;
     border-bottom: 1px solid var(--border);
-    background: var(--bg);
+    background-color: var(--bg);
   }
 
   .lane.selected {
-    background: rgba(91, 140, 255, 0.04);
+    background-color: rgba(91, 140, 255, 0.06);
   }
 
   .clip {
@@ -1025,6 +1242,7 @@
     position: absolute;
     top: 4px;
     bottom: 4px;
+    z-index: 1;
     display: flex;
     align-items: center;
     background: hsla(

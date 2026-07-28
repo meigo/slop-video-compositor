@@ -39,7 +39,12 @@
       </span>
     </div>
   </div>
-  <button type="button" class="ghost" onclick={onRecheck}>
+  <button
+    type="button"
+    class="ghost"
+    onclick={onRecheck}
+    title="Check PATH for ffmpeg again"
+  >
     <RefreshCw size={16} strokeWidth={2} aria-hidden="true" />
     <span>Recheck</span>
   </button>
