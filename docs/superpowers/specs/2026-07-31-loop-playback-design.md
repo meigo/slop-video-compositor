@@ -128,7 +128,10 @@ No status message is emitted on each wrap — it would overwrite real messages o
   - single clip at 0 → that clip
   - leading black gap → the first clip after the gap, not `null`
   - two tracks covering the same time → the higher track's clip
-  - clip starting beyond the sequence duration → not returned
+
+  (No "clip past the sequence end" case: `projectDuration` is `max(contentDuration, stored)`, so
+  a clip's start is always inside the sequence. The `< total` guard is defensive, mirroring
+  `nextClipAfter`.)
 - The `tick()` wrap is component logic and is verified manually (play a two-clip sequence with
   loop on; confirm it wraps without stopping and without a black flash). `Preview.svelte` has no
   component tests today and this change does not introduce a harness for them.
