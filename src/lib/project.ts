@@ -4,6 +4,8 @@ import type { Clip, ClipTransform, Marker, Project, Track } from "./types";
 export const DEFAULT_CANVAS = { width: 1920, height: 1080 };
 /** Default empty-sequence length (seconds). */
 export const DEFAULT_DURATION = 10;
+/** Name a fresh project carries until something sets one. Treated as "unnamed". */
+export const DEFAULT_PROJECT_NAME = "Untitled";
 /** Timeline / export frame rate (matches ffmpeg export `-r 30`). */
 export const PROJECT_FPS = 30;
 
@@ -27,7 +29,7 @@ export function defaultTransform(): ClipTransform {
   return { scale: 1, x: 0, y: 0 };
 }
 
-export function createProject(name = "Untitled"): Project {
+export function createProject(name = DEFAULT_PROJECT_NAME): Project {
   const tracks: Track[] = [
     { id: newId(), name: "V1", clips: [] },
     { id: newId(), name: "V2", clips: [] },
