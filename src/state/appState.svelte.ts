@@ -7,6 +7,7 @@ import {
   overwriteWithClip,
 } from "$lib/clips";
 import { nextCut, prevCut } from "$lib/cuts";
+import { defaultExportFileName } from "$lib/exportName";
 import { toExportOpts } from "$lib/exportPayload";
 import {
   canRedo,
@@ -464,19 +465,6 @@ function joinPath(dir: string, file: string): string {
   return dir.endsWith("/") || dir.endsWith("\\") ? `${dir}${file}` : `${dir}${sep}${file}`;
 }
 
-function safeExportName(project: Project): string {
-  const base = (project.name.trim() || "export").replace(
-    /[<>:"/\\|?*\u0000-\u001f]/g,
-    "_",
-  );
-  const dur = projectDuration(project);
-  const durTag = dur >= 1 ? `${Math.round(dur)}s` : `${Math.round(dur * 10) / 10}s`;
-  let clips = 0;
-  for (const t of project.tracks) clips += t.clips.length;
-  const stem = `${base.slice(0, 48)}_${durTag}_${clips}clip`.replace(/\s+/g, "_");
-  return `${stem}.mp4`;
-}
-
 type ProgressPayload = { phase: string; message: string; pct: number | null };
 
 /** Validate sources, pick path, export via ffmpeg, reveal on success. */
@@ -538,7 +526,8 @@ export async function exportVideo() {
       dir = null;
     }
   }
-  const suggested = dir ? joinPath(dir, safeExportName(p)) : safeExportName(p);
+  const name = defaultExportFileName(p, app.projectPath);
+  const suggested = dir ? joinPath(dir, name) : name;
 
   let outputPath: string | null;
   try {
