@@ -95,6 +95,8 @@ export const app = $state({
    * Export always uses the full project.
    */
   previewSoloTrackId: null as string | null,
+  /** Preview-only: when true, playback wraps to 0 instead of stopping at the end. */
+  loopPlayback: false,
   checkingDeps: true,
   lastProjectDir: null as string | null,
   lastExportDir: null as string | null,
@@ -620,6 +622,11 @@ export function setTimelineDuration(secs: number) {
 export function setPlayhead(t: number) {
   const max = projectDuration(project());
   app.playhead = Math.min(max, Math.max(0, t));
+}
+
+export function toggleLoopPlayback() {
+  app.loopPlayback = !app.loopPlayback;
+  app.status = app.loopPlayback ? "Loop on" : "Loop off";
 }
 
 /**

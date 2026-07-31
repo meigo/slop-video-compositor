@@ -1,6 +1,7 @@
 <script lang="ts">
   import Pause from "@lucide/svelte/icons/pause";
   import Play from "@lucide/svelte/icons/play";
+  import Repeat from "@lucide/svelte/icons/repeat";
   import Square from "@lucide/svelte/icons/square";
   import Volume2 from "@lucide/svelte/icons/volume-2";
   import VolumeX from "@lucide/svelte/icons/volume-x";
@@ -11,8 +12,10 @@
     duration: number;
     playing: boolean;
     muted: boolean;
+    loop: boolean;
     onTogglePlay: () => void;
     onStop: () => void;
+    onToggleLoop: () => void;
     onToggleMute: () => void;
   }
 
@@ -21,8 +24,10 @@
     duration,
     playing,
     muted,
+    loop,
     onTogglePlay,
     onStop,
+    onToggleLoop,
     onToggleMute,
   }: Props = $props();
 
@@ -45,6 +50,17 @@
   </button>
   <button type="button" class="ghost" onclick={onStop} title="Stop and return to start" aria-label="Stop">
     <Square size={15} strokeWidth={2.25} aria-hidden="true" />
+  </button>
+  <button
+    type="button"
+    class="ghost"
+    class:on={loop}
+    onclick={onToggleLoop}
+    title={loop ? "Loop playback: on (L)" : "Loop playback: off (L)"}
+    aria-label="Loop playback"
+    aria-pressed={loop}
+  >
+    <Repeat size={ICON} strokeWidth={2} aria-hidden="true" />
   </button>
   <button
     type="button"
@@ -81,6 +97,12 @@
     justify-content: center;
     min-width: 2.1rem;
     padding: 0.4em 0.55em;
+  }
+
+  /* Ghost buttons are already --text; an active toggle reads as accent. */
+  .transport :global(button.on) {
+    color: var(--accent);
+    border-color: var(--accent);
   }
 
   .time {

@@ -44,6 +44,7 @@
     setTimelineHeight,
     stepPlayheadFrames,
     stepPlayheadSeconds,
+    toggleLoopPlayback,
     undo,
     redo,
     updateSelectedClipFields,
@@ -66,7 +67,7 @@
       return "Select a clip → Relink… or Reveal in Inspector";
     }
     if (app.playing) {
-      return "Space pause · [ ] cuts · Home/End ends";
+      return "Space pause · [ ] cuts · L loop";
     }
     if (nSel > 1) {
       return `${nSel} selected · drag any to move group · Delete all · ⌘C copy · ⌘-click to toggle`;
@@ -186,6 +187,11 @@
       addMarkerAtPlayhead();
       return;
     }
+    if (event.key.toLowerCase() === "l" && !mod) {
+      event.preventDefault();
+      toggleLoopPlayback();
+      return;
+    }
 
     // Frame step (export fps = 30). Shift = 1 second.
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -294,8 +300,10 @@
         duration={dur}
         playing={app.playing}
         muted={app.previewMuted}
+        loop={app.loopPlayback}
         onTogglePlay={togglePlay}
         onStop={stop}
+        onToggleLoop={toggleLoopPlayback}
         onToggleMute={() => {
           app.previewMuted = !app.previewMuted;
           app.status = app.previewMuted ? "Preview muted" : "Preview unmuted";
