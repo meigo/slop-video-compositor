@@ -3,6 +3,7 @@ import { createProject, defaultTransform } from "./project";
 import {
   clampSourceSeek,
   clipTimelineEnd,
+  firstClipInSequence,
   nextClipAfter,
   shouldPrefetchNearCut,
   sourceTimeAt,
@@ -53,6 +54,40 @@ describe("nextClipAfter", () => {
     const a = clip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 2 });
     p.tracks[0].clips.push(a);
     expect(nextClipAfter(p, a)).toBeNull();
+  });
+});
+
+describe("firstClipInSequence", () => {
+  it("returns null for an empty project", () => {
+    expect(firstClipInSequence(createProject())).toBeNull();
+  });
+
+  it("returns the clip at time 0", () => {
+    const p = createProject();
+    const a = clip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 2 });
+    p.tracks[0].clips.push(a);
+    expect(firstClipInSequence(p)?.id).toBe("a");
+  });
+
+  it("skips a leading black gap", () => {
+    const p = createProject();
+    const a = clip({ id: "a", timelineStart: 3, sourceIn: 0, sourceOut: 2 });
+    p.tracks[0].clips.push(a);
+    expect(firstClipInSequence(p)?.id).toBe("a");
+  });
+
+  it("prefers the higher track when both cover the start", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(clip({ id: "lo", timelineStart: 0, sourceIn: 0, sourceOut: 4 }));
+    p.tracks[1].clips.push(clip({ id: "hi", timelineStart: 0, sourceIn: 0, sourceOut: 4 }));
+    expect(firstClipInSequence(p)?.id).toBe("hi");
+  });
+
+  it("returns the earliest clip when clips start at different times", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(clip({ id: "late", timelineStart: 5, sourceIn: 0, sourceOut: 2 }));
+    p.tracks[0].clips.push(clip({ id: "early", timelineStart: 1, sourceIn: 0, sourceOut: 2 }));
+    expect(firstClipInSequence(p)?.id).toBe("early");
   });
 });
 

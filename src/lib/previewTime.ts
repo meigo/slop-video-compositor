@@ -50,6 +50,29 @@ export function nextClipAfter(project: Project, clip: Clip): Clip | null {
   return null;
 }
 
+/**
+ * First hard-cut clip in the sequence (skips a leading black gap).
+ * Pure helper for loop wrap-around prefetch; null when the timeline has no media.
+ */
+export function firstClipInSequence(project: Project): Clip | null {
+  const total = projectDuration(project);
+  const candidates = new Set<number>([0]);
+  for (const track of project.tracks) {
+    for (const c of track.clips) {
+      if (c.timelineStart >= 0 && c.timelineStart < total) {
+        candidates.add(c.timelineStart);
+      }
+    }
+  }
+
+  const sorted = [...candidates].sort((a, b) => a - b);
+  for (const t of sorted) {
+    const hit = clipAtTime(project, t);
+    if (hit) return hit.clip;
+  }
+  return null;
+}
+
 /** True when remaining media time in the active clip is within the prefetch lead. */
 export function shouldPrefetchNearCut(
   sourceOut: number,
