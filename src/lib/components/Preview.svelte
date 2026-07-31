@@ -5,6 +5,7 @@
   import {
     clampSourceSeek,
     clipTimelineEnd,
+    firstClipInSequence,
     nextClipAfter,
     shouldPrefetchNearCut,
     sourceTimeAt,
@@ -405,7 +406,9 @@
   /** Warm standby with the upcoming clip at its sourceIn. */
   function schedulePrefetch(fromClip: Clip) {
     const proj = previewProject();
-    const next = nextClipAfter(proj, fromClip);
+    // With loop on, the sequence's first clip follows the last one — warm it like any cut.
+    const next =
+      nextClipAfter(proj, fromClip) ?? (app.loopPlayback ? firstClipInSequence(proj) : null);
     if (!next) {
       prefetchClipId = null;
       return;
@@ -517,6 +520,23 @@
     stopRaf();
   }
 
+  /**
+   * Loop wrap: restart at 0. Prefer the prefetched standby so the loop point behaves
+   * like any other hard cut; otherwise fall back to a cold start on the next tick.
+   */
+  function wrapToStart() {
+    setPlayhead(0);
+    const hit = clipAtTime(previewProject(), 0);
+    if (hit && swapToStandby(hit.clip)) return;
+
+    playingClipId = null;
+    for (const s of slots) {
+      s.el?.pause();
+    }
+    applyAudioState();
+    paint();
+  }
+
   function tick(now: number) {
     if (!app.playing) {
       rafId = 0;
@@ -600,7 +620,13 @@
     }
 
     if (t >= totalDur - 1e-6) {
-      stopPlayback(totalDur, "Paused");
+      if (!app.loopPlayback) {
+        stopPlayback(totalDur, "Paused");
+        return;
+      }
+      // wrapToStart sets the playhead itself — skip the setPlayhead(t) below.
+      wrapToStart();
+      rafId = requestAnimationFrame(tick);
       return;
     }
 
