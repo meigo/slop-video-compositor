@@ -18,6 +18,31 @@ export const checkDeps = () => invoke<DepsStatus>("check_deps");
 export const probeMedia = (path: string) =>
   invoke<MediaMeta>("probe_media", { path });
 
+/** Wire shape from Rust `generate_filmstrip`. */
+export type FilmstripResult = {
+  data_url: string;
+  cached: boolean;
+  /** Actual tiles in the JPEG (after clamps / short-clip reduction). */
+  count: number;
+  /** Native JPEG width (px). */
+  width: number;
+  /** Native JPEG height (px). */
+  height: number;
+};
+
+/** Build (or return cached) timeline filmstrip as a data URL. */
+export const generateFilmstrip = (opts: {
+  path: string;
+  source_start: number;
+  duration: number;
+  count: number;
+  height: number;
+  target_width: number;
+}) =>
+  // Single `opts` bag — matches export_project / Rust FilmstripOpts (avoids
+  // Tauri arg-name mismatches on multi-param commands).
+  invoke<FilmstripResult>("generate_filmstrip", { opts });
+
 /** Map Rust MediaMeta → SourceMeta by attaching the source path. */
 export function toSourceMeta(path: string, meta: MediaMeta): SourceMeta {
   return {

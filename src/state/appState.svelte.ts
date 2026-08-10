@@ -12,6 +12,11 @@ import {
   hasExplicitPlayRange,
   type PlayBounds,
 } from "$lib/playRange";
+import {
+  DEFAULT_TRACK_ROW_SIZE,
+  isTrackRowSize,
+  type TrackRowSize,
+} from "$lib/trackRow";
 import { defaultExportFileName } from "$lib/exportName";
 import { toExportOpts } from "$lib/exportPayload";
 import {
@@ -110,6 +115,10 @@ export const app = $state({
    */
   playIn: null as number | null,
   playOut: null as number | null,
+  /** Preview-only: show filmstrip thumbnails on video clips (session; default on). */
+  showFilmstrips: true,
+  /** Timeline track row height preset (session). */
+  trackRowSize: DEFAULT_TRACK_ROW_SIZE as TrackRowSize,
   checkingDeps: true,
   lastProjectDir: null as string | null,
   lastExportDir: null as string | null,
@@ -667,6 +676,19 @@ export function clearPlayRange() {
 
 export function hasPlayRange(): boolean {
   return hasExplicitPlayRange(app.playIn, app.playOut);
+}
+
+export function toggleFilmstrips() {
+  app.showFilmstrips = !app.showFilmstrips;
+  app.status = app.showFilmstrips ? "Filmstrips on" : "Filmstrips off";
+}
+
+export function setTrackRowSize(size: TrackRowSize) {
+  if (!isTrackRowSize(size)) return;
+  if (app.trackRowSize === size) return;
+  app.trackRowSize = size;
+  const label = size === "s" ? "compact" : size === "l" ? "tall" : "default";
+  app.status = `Track height: ${label}`;
 }
 
 /**

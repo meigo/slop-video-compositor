@@ -3,6 +3,8 @@
   import BookmarkPlus from "@lucide/svelte/icons/bookmark-plus";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import Image from "@lucide/svelte/icons/image";
+  import ImageOff from "@lucide/svelte/icons/image-off";
   import Layers from "@lucide/svelte/icons/layers";
   import Maximize2 from "@lucide/svelte/icons/maximize-2";
   import Plus from "@lucide/svelte/icons/plus";
@@ -24,6 +26,16 @@
     trimClipOut,
   } from "$lib/clips";
   import { clipColorCssVars } from "$lib/clipColor";
+  import ClipFilmstrip from "$lib/components/ClipFilmstrip.svelte";
+  import {
+    clearFilmstripErrors,
+    clearFilmstripMemoryCache,
+    ensureFilmstrip,
+    getFilmstrip,
+    getFilmstripLastError,
+    subscribeFilmstrips,
+  } from "$lib/filmstripCache";
+  import type { FilmstripReady } from "$lib/filmstripCache";
   import {
     clipDuration,
     cloneProject,
@@ -38,6 +50,7 @@
     snapTime,
   } from "$lib/snap";
   import { clamp, formatTimestamp } from "$lib/time";
+  import { trackRowMetrics, type TrackRowSize } from "$lib/trackRow";
   import type { Project } from "$lib/types";
   import {
     addMarkerAtPlayhead,
@@ -62,14 +75,18 @@
     setPlayhead,
     setPresentLive,
     setTimelineDuration,
+    setTrackRowSize,
     stepPlayheadFrames,
     stepPlayheadSeconds,
     toggleClipInSelection,
+    toggleFilmstrips,
     toggleSoloTrack,
   } from "../../state/appState.svelte";
 
-  const TRACK_H = 40;
   const RULER_H = 28;
+  const row = $derived(trackRowMetrics(app.trackRowSize));
+  const TRACK_H = $derived(row.trackH);
+  const FILMSTRIP_H = $derived(row.filmstripH);
   const EDGE_PX = 7;
   const DURATION_HANDLE_PX = 10;
   const MIN_PPS = 6;
@@ -83,6 +100,8 @@
   let editingMarkerId = $state<string | null>(null);
   let editingMarkerLabel = $state("");
   let markerRenameInput: HTMLInputElement | undefined = $state();
+  /** Bumps when a filmstrip finishes loading so clip backgrounds refresh. */
+  let filmstripTick = $state(0);
 
   type DragKind = "move" | "trim-in" | "trim-out";
 
@@ -695,6 +714,14 @@
 
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
+    return subscribeFilmstrips(() => {
+      filmstripTick++;
+      const err = getFilmstripLastError();
+      if (err && app.showFilmstrips) {
+        // One-line status only when something fails (not per-clip spam).
+        app.status = `Filmstrip: ${err}`;
+      }
+    });
   });
 
   onDestroy(() => {
@@ -703,6 +730,38 @@
     endScrub();
     endDurationResize();
   });
+
+  // One full-media strip per source+height (not per trim / zoom).
+  $effect(() => {
+    if (!app.showFilmstrips) return;
+    void p;
+    void app.metaByPath;
+    void FILMSTRIP_H;
+    for (const track of p.tracks) {
+      for (const clip of track.clips) {
+        ensureFilmstrip(clip, app.metaByPath.get(clip.sourcePath), FILMSTRIP_H);
+      }
+    }
+  });
+
+  function filmstripForClip(
+    clip: (typeof p.tracks)[0]["clips"][0],
+  ): FilmstripReady | null {
+    void filmstripTick;
+    if (!app.showFilmstrips) return null;
+    const meta = app.metaByPath.get(clip.sourcePath);
+    const key = ensureFilmstrip(clip, meta, FILMSTRIP_H);
+    return key ? getFilmstrip(key) : null;
+  }
+
+  function onToggleFilmstrips() {
+    toggleFilmstrips();
+    if (app.showFilmstrips) {
+      clearFilmstripErrors();
+      clearFilmstripMemoryCache();
+      filmstripTick++;
+    }
+  }
 </script>
 
 <section class="timeline" aria-label="Timeline">
@@ -823,6 +882,41 @@
         <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
         <span>Delete</span>
       </button>
+    </div>
+    <div class="tool-sep" aria-hidden="true"></div>
+    <div class="tool-group" role="group" aria-label="Display">
+      <button
+        type="button"
+        class="ghost tool-btn"
+        class:on={app.showFilmstrips}
+        onclick={onToggleFilmstrips}
+        title={app.showFilmstrips
+          ? "Hide clip filmstrips (ffmpeg)"
+          : "Show clip filmstrips (ffmpeg)"}
+        aria-label="Toggle filmstrips"
+        aria-pressed={app.showFilmstrips}
+      >
+        {#if app.showFilmstrips}
+          <Image size={15} strokeWidth={2} aria-hidden="true" />
+        {:else}
+          <ImageOff size={15} strokeWidth={2} aria-hidden="true" />
+        {/if}
+        <span>Thumbs</span>
+      </button>
+      <span class="tool-sep-inline" aria-hidden="true"></span>
+      {#each ["s", "m", "l"] as size (size)}
+        <button
+          type="button"
+          class="ghost tool-btn tool-btn-sq"
+          class:on={app.trackRowSize === size}
+          onclick={() => setTrackRowSize(size as TrackRowSize)}
+          title={trackRowMetrics(size as TrackRowSize).title}
+          aria-label={trackRowMetrics(size as TrackRowSize).title}
+          aria-pressed={app.trackRowSize === size}
+        >
+          <span class="io-key">{trackRowMetrics(size as TrackRowSize).label}</span>
+        </button>
+      {/each}
     </div>
     <div class="tool-sep" aria-hidden="true"></div>
     <div class="tool-group" role="group" aria-label="Play range">
@@ -1058,6 +1152,7 @@
                   {@const preW = preSec * pxPerSecond}
                   {@const postW = postSec * pxPerSecond}
                   {@const colorVars = clipColorCssVars(clip.sourcePath)}
+                  {@const strip = filmstripForClip(clip)}
                   <!-- Trimmed source still on disk: dim handles around the used range -->
                   {#if preW >= 2}
                     <div
@@ -1082,6 +1177,7 @@
                     class:active={isClipSelected(clip.id)}
                     class:primary={clip.id === app.selectedClipId && app.selectedClipIds.length > 1}
                     class:muted-clip={clip.muted === true}
+                    class:has-filmstrip={!!strip}
                     class:dragging={dragClipId === clip.id ||
                       (dragKind === "move" && dragGroupIds.includes(clip.id) && didMove)}
                     class:copying={dragCopying &&
@@ -1104,6 +1200,17 @@
                       }
                     }}
                   >
+                    {#if strip}
+                      <ClipFilmstrip
+                        url={strip.url}
+                        count={strip.count}
+                        width={strip.width}
+                        height={strip.height}
+                        sourceIn={clip.sourceIn}
+                        sourceOut={clip.sourceOut}
+                        mediaDuration={strip.mediaDuration}
+                      />
+                    {/if}
                     <span
                       class="edge in"
                       data-edge="in"
@@ -1642,6 +1749,20 @@
     border-color: var(--accent);
   }
 
+  .timeline-tools :global(.tool-btn-sq) {
+    min-width: 1.85rem;
+    padding-left: 0.4em;
+    padding-right: 0.4em;
+    justify-content: center;
+  }
+
+  .tool-sep-inline {
+    width: 1px;
+    height: 1.2rem;
+    background: var(--border);
+    margin: 0 0.1rem;
+  }
+
   .io-key {
     display: inline-flex;
     align-items: center;
@@ -1741,7 +1862,28 @@
     touch-action: none;
     min-width: 4px;
     box-sizing: border-box;
-    z-index: 1;
+  }
+
+  .clip.has-filmstrip {
+    background: hsla(
+      var(--clip-h),
+      calc(var(--clip-s) * 1%),
+      calc(var(--clip-l) * 1%),
+      0.18
+    );
+  }
+
+  .clip.has-filmstrip::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      to top,
+      hsla(var(--clip-h), calc(var(--clip-s) * 1%), 12%, 0.55),
+      transparent 55%
+    );
   }
 
   .clip:hover {
@@ -1750,6 +1892,15 @@
       calc(var(--clip-s) * 1%),
       calc(var(--clip-l) * 1%),
       0.4
+    );
+  }
+
+  .clip.has-filmstrip:hover {
+    background: hsla(
+      var(--clip-h),
+      calc(var(--clip-s) * 1%),
+      calc(var(--clip-l) * 1%),
+      0.22
     );
   }
 
@@ -1802,6 +1953,8 @@
     margin-left: 0.2rem;
     opacity: 0.9;
     pointer-events: none;
+    position: relative;
+    z-index: 1;
   }
 
   .clip.muted-clip {
@@ -1817,12 +1970,19 @@
     overflow: hidden;
     text-overflow: ellipsis;
     pointer-events: none;
+    position: relative;
+    z-index: 1;
+    text-shadow:
+      0 0 4px rgba(0, 0, 0, 0.85),
+      0 1px 2px rgba(0, 0, 0, 0.9);
   }
 
   .edge {
     flex: 0 0 auto;
     align-self: stretch;
     cursor: ew-resize;
+    position: relative;
+    z-index: 2;
     background: transparent;
     z-index: 2;
     touch-action: none;
