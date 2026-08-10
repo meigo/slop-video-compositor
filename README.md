@@ -3,9 +3,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub](https://img.shields.io/badge/github-meigo%2Fslop--video--compositor-181717?logo=github)](https://github.com/meigo/slop-video-compositor)
 
-Desktop multi-shot **hard-cut** video compositor: load local clips onto tracks, trim/cut/reorder, reframe on a fixed canvas, export one animator-friendly **H.264 + AAC MP4**.
+Desktop multi-shot **hard-cut** video compositor: load local video and audio onto tracks, trim/cut/reorder, reframe on a fixed canvas, export one animator-friendly **H.264 + AAC MP4**.
 
 Sits between **[slop-video-downloader](https://github.com/meigo/slop-video-downloader)** and **[slop-animator](https://github.com/meigo/slop-animator)**: gather clips → compose here → open the MP4 as a video reference in the animator.
+
+![Slop Video Compositor — preview, inspector, multi-track timeline with filmstrips and markers](docs/screenshot.png)
 
 **Stack:** Tauri 2 + SvelteKit + TypeScript, with **ffmpeg** on your `PATH` (not bundled).
 
@@ -15,22 +17,35 @@ Sits between **[slop-video-downloader](https://github.com/meigo/slop-video-downl
 | **Platform** | macOS-first (Tauri desktop) |
 | **Export** | H.264 + AAC MP4 @ **30 fps**, project canvas size |
 | **Edit grid** | Timeline / frame step at fixed **30 fps** (no per-clip fps UI) |
+| **Resolve** | Same-track overwrite; higher track wins for picture; audio beds underlay |
 
 ## Features
 
-- Multi-track timeline: import, move, trim in/out, split at playhead, delete (no ripple)
-- Same-track **overwrite** (dragged clip wins); higher track wins across tracks
+### Timeline
+- Multi-track: import, move, trim in/out, split at playhead, delete (**no ripple**)
+- Same-track **overwrite** (dragged clip wins); **higher track** wins across tracks for picture
+- **Audio-only** import (mp3/m4a/…) as beds — underlay under video, never occlude picture
+- **Per-clip mute** (preview + export)
 - **Gap hatch** on empty track time; **trim handles** show unused source outside in/out
 - Per-source clip colors; long names truncated (full path on hover)
-- Snap on drag/trim (**Shift** = free); Fit zoom to sequence width
+- Snap on drag/trim (**Shift** = free); Fit zoom; **S/M/L** track row height
+- Optional **filmstrips** on video clips and **waveforms** on audio (Thumbs toggle; prefs persist)
 - **Program out** sequence end (shortening trims/deletes media past that time)
-- Import placement: append on track / at playhead / each file → new track
-- Named **markers** on the ruler; multi-select (⌘/Ctrl-click) + group time move; copy / paste / duplicate
-- Preview: dual-buffer free-run; track **solo** (preview only); viewport pan/zoom vs clip transform
-- Compact toolbar: **File ▾**, **Import** + place menu, **Export**, undo/redo, **Canvas ▾** (presets + W×H)
-- Relink + Reveal source; autosave to `*.autosave.json` beside the project
-- Export filename includes project name, duration, and clip count
-- Startup check for `ffmpeg`
+- Import placement: append / at playhead / each file → new track
+- Named **markers** (seek, double-click rename, Alt+click remove); **⌥-drag** copy clips
+- Multi-select (⌘/Ctrl-click) + group time move; copy / paste / duplicate
+
+### Preview & export
+- Dual-buffer free-run with hard-cut prefetch; track **solo** (preview only)
+- **Play range** I/O (session, preview only — export still uses full program out)
+- **Loop** playback within the play range or full sequence
+- Viewport pan/zoom vs clip transform (Ctrl/⌘ pan, Shift scale)
+- Export filename from project name / duration / clip count; reveal in Finder
+- Relink + Reveal source; autosave `*.autosave.json`; startup **ffmpeg** check
+
+### UI chrome
+- Compact toolbar: **File ▾**, **Import** + place menu, **Export**, undo/redo, **Canvas ▾**
+- Timeline tool strip: Prev/Next cut, Split, Delete, Thumbs, S/M/L, I/O range, Marker
 
 ## Requirements
 
@@ -38,7 +53,7 @@ Sits between **[slop-video-downloader](https://github.com/meigo/slop-video-downl
 |------|--------|
 | **Node.js** | LTS (`npm`) |
 | **Rust** | Stable (`rustc` / `cargo`) for Tauri |
-| **ffmpeg** | Probe, encode, concat — must be on `PATH` |
+| **ffmpeg** | Probe, filmstrips, waveforms, encode — must be on `PATH` |
 
 ```bash
 # macOS (Homebrew)
@@ -65,13 +80,15 @@ npm run tauri dev
 
 ## Usage
 
-1. **Import** (`Import` or ⌘I). Default place mode **appends** on the selected track. Use Import ▾ for playhead or each-file→new-track (or ⌘⇧I).
-2. **Edit** on the timeline: drag to move (snaps), edge-drag to trim (dim **handles** show remaining unused source), **S** split, Delete remove.
-3. **Reframe** in the preview: **Ctrl/⌘-drag** pans the clip on the canvas; **Shift-drag** scales; wheel zooms the **viewport**. Timeline **Fit** fills the track width.
-4. **Canvas ▾** — presets (1080p, 720p, vertical, square) or custom even W×H.
-5. **Save** project JSON (absolute source paths). Dirty projects autosave beside the file as `name.autosave.json`.
-6. **Export** → MP4 (last export dir or `~/Movies/Slop Refs`) → Finder reveals on success.
-7. Open the MP4 in **slop-animator** as a video reference.
+1. **Import** (`Import` or ⌘I) — video and/or audio. Default **appends** on the selected track. Import ▾ for playhead or each-file→new-track (⌘⇧I).
+2. **Edit** on the timeline: drag to move (snaps), edge-drag to trim (dim **handles** = unused media still on disk), **S** split, Delete remove. **⌥-drag** duplicates.
+3. **Thumbs** — filmstrips on video, waveforms on audio beds; **S/M/L** track height. First generation may take a few seconds (cached after that).
+4. **Reframe** in the preview: **Ctrl/⌘-drag** pans the clip; **Shift-drag** scales; wheel zooms the **viewport**. Timeline **Fit** fills the track width.
+5. **Play range** (optional): **I** / **O** at the playhead for preview-only in/out; **L** loop; export ignores the range.
+6. **Canvas ▾** — presets (1080p, 720p, vertical, square) or custom even W×H.
+7. **Save** project JSON (absolute source paths). Dirty projects autosave as `name.autosave.json`.
+8. **Export** → MP4 (last export dir or `~/Movies/Slop Refs`) → Finder reveals on success.
+9. Open the MP4 in **slop-animator** as a video reference.
 
 Missing media: **Relink…** or **Reveal** in the Inspector. Open warns if sources fail to probe.
 
@@ -84,11 +101,15 @@ Missing media: **Relink…** or **Reveal** in the Inspector. Open warns if sourc
 | Shift+← / → | Step **1 second** |
 | Home / End | Sequence start / end |
 | `[` / `]` | Previous / next cut (clip edges + markers) |
+| I / O | Set play-in / play-out at playhead (preview only) |
+| Esc | Clear play range (when not editing a field) |
+| L | Toggle loop playback |
 | M | Marker at playhead |
 | S | Split selected clip at playhead |
-| Delete / Backspace | Delete selected clip |
-| ⌘C / ⌘V / ⌘D | Copy / paste / duplicate (selection) |
+| Delete / Backspace | Delete selected clip(s) |
+| ⌘C / ⌘V / ⌘D | Copy / paste / duplicate |
 | ⌘-click clip | Add/remove from multi-select |
+| ⌥-drag clip | Duplicate while dragging |
 | ⌘S / ⌘⇧S | Save / Save As |
 | ⌘O | Open project |
 | ⌘I / ⌘⇧I | Import / import each → new track |
@@ -104,15 +125,19 @@ Ignored while focus is in text fields.
 - **Trim handles:** dashed extensions = media still in the file but outside the used range.
 - **Gap hatch:** empty track time (no clip, not trimmed media).
 - **Solo:** double-click a track label (preview only; export uses all tracks).
-- **Markers:** click to seek; Alt+click to remove.
+- **Markers:** click seek; double-click rename; Alt+click remove.
+- **Thumbs / S·M·L:** session prefs persist in app settings (with timeline height).
+- **Audio beds:** audio-only clips never win the picture track; they mix under the hard-cut video.
 
 ## Project files
 
-JSON `version: 1` — name, canvas, duration (program out), tracks, clips (`sourcePath`, `sourceIn` / `sourceOut`, `timelineStart`, transform), optional **markers**. Paths are absolute; use Relink if a file moves.
+JSON `version: 1` — name, canvas, duration (program out), tracks, clips (`sourcePath`, `sourceIn` / `sourceOut`, `timelineStart`, transform, optional `muted`), optional **markers** (`t`, `label`). Paths are absolute; use Relink if a file moves.
+
+Filmstrips and waveforms are **not** stored in the project (generated via ffmpeg, disk-cached under the OS cache dir).
 
 ## Design
 
-Internal design notes: `docs/superpowers/specs/2026-07-27-slop-video-compositor-design.md`.
+Internal design notes live under `docs/superpowers/specs/` (e.g. main design, filmstrips, loop, export filename). Preview hard-cuts use dual HTML video buffers — good free-run feedback, not a pro NLE frame cache.
 
 ## Contributors
 
