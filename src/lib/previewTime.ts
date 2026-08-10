@@ -43,6 +43,9 @@ export function shouldPrefetchNearCut(
   videoTime: number,
   leadSecs: number,
 ): boolean {
+  if (!(leadSecs > 0) || !Number.isFinite(sourceOut) || !Number.isFinite(videoTime)) {
+    return false;
+  }
   return sourceOut - videoTime <= leadSecs;
 }
 
@@ -56,7 +59,21 @@ export function shouldPrerollStandby(
   prerollSecs: number,
 ): boolean {
   if (!(prerollSecs > 0)) return false;
+  if (!Number.isFinite(sourceOut) || !Number.isFinite(videoTime)) return false;
   return sourceOut - videoTime <= prerollSecs;
+}
+
+/**
+ * Hard-cut swap is only seamless when the playhead maps near the next clip's
+ * sourceIn (not a mid-clip scrub/play-in target).
+ */
+export function isHardCutIntoSourceIn(
+  needSourceT: number,
+  sourceIn: number,
+  tol = 0.08,
+): boolean {
+  if (!Number.isFinite(needSourceT) || !Number.isFinite(sourceIn)) return false;
+  return Math.abs(needSourceT - sourceIn) <= tol;
 }
 
 /**

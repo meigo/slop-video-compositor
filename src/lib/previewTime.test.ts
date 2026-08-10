@@ -5,6 +5,7 @@ import {
   clampSourceSeekPreroll,
   clipTimelineEnd,
   firstClipInSequence,
+  isHardCutIntoSourceIn,
   nextClipAfter,
   shouldPrefetchNearCut,
   shouldPrerollStandby,
@@ -137,6 +138,7 @@ describe("shouldPrefetchNearCut", () => {
     expect(shouldPrefetchNearCut(10, 9.2, 0.85)).toBe(true);
     expect(shouldPrefetchNearCut(10, 5, 0.85)).toBe(false);
     expect(shouldPrefetchNearCut(10, 8.5, 1.5)).toBe(true);
+    expect(shouldPrefetchNearCut(10, 7, 3)).toBe(true);
   });
 });
 
@@ -145,6 +147,15 @@ describe("shouldPrerollStandby", () => {
     expect(shouldPrerollStandby(10, 9.95, 0.12)).toBe(true);
     expect(shouldPrerollStandby(10, 9.5, 0.12)).toBe(false);
     expect(shouldPrerollStandby(10, 9.5, 0)).toBe(false);
+    expect(shouldPrerollStandby(10, 9.7, 0.35)).toBe(true);
+  });
+});
+
+describe("isHardCutIntoSourceIn", () => {
+  it("accepts targets near sourceIn", () => {
+    expect(isHardCutIntoSourceIn(2.0, 2.0)).toBe(true);
+    expect(isHardCutIntoSourceIn(2.05, 2.0)).toBe(true);
+    expect(isHardCutIntoSourceIn(3.0, 2.0)).toBe(false);
   });
 });
 

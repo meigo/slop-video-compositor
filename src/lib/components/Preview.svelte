@@ -7,6 +7,7 @@
     clampSourceSeekPreroll,
     clipTimelineEnd,
     firstClipInSequence,
+    isHardCutIntoSourceIn,
     nextClipAfter,
     shouldPrefetchNearCut,
     shouldPrerollStandby,
@@ -37,13 +38,20 @@
   const CLIP_SCALE_MAX = 8;
   /** Near end of trimmed source — treat as clip finished. */
   const CLIP_END_EPS = 1 / 30;
-  /** Start warming the next clip this many seconds before the cut (earlier = fewer black cuts). */
-  const PREFETCH_LEAD = 2.25;
+  /** Load/seek standby this far before the cut (source seconds remaining). */
+  const PREFETCH_LEAD = 3.0;
   /**
-   * Seek standby this far before sourceIn and start muted play into the cut so the
-   * first frame is already decoded (keyframe-stall trade-off).
+   * Seek standby this far before sourceIn so free-run can roll into the cut
+   * past keyframe stalls (accuracy trade-off).
    */
-  const PREFETCH_PREROLL = 0.2;
+  const PREFETCH_PREROLL = 0.25;
+  /**
+   * Start muted free-run on standby this far before the cut (must be ≤ PREFETCH_LEAD
+   * and usually ≥ PREFETCH_PREROLL so there is time to roll into sourceIn).
+   */
+  const STANDBY_PLAY_LEAD = 0.4;
+  /** Tolerance for treating a cut as "into sourceIn" (seamless swap). */
+  const HARD_CUT_TOL = 0.08;
 
   type Slot = {
     el: HTMLVideoElement | undefined;
@@ -611,20 +619,37 @@
       prefetchClipId = null;
       return;
     }
-    if (prefetchClipId === next.id && standbySlot().clipId === next.id && standbySlot().ready) {
+    const stand = standbySlot();
+    // Already warm with a decoded frame — nothing to do.
+    if (
+      prefetchClipId === next.id &&
+      stand.clipId === next.id &&
+      stand.ready &&
+      stand.el &&
+      mediaReady(stand.el, next)
+    ) {
+      return;
+    }
+    // Same target still loading — don't restart.
+    if (prefetchClipId === next.id && stand.clipId === next.id && !stand.ready) {
       return;
     }
     prefetchClipId = next.id;
     const gen = ++prefetchGen;
-    const stand = standbySlot();
     void prepareSlot(stand, next, next.sourceIn, {
       play: false,
       preroll: true,
       valid: () => gen === prefetchGen && app.playing,
     }).then((ok) => {
       if (!ok || gen !== prefetchGen) return;
+      // Keep paused until STANDBY_PLAY_LEAD; force one decode path if still cold.
       stand.el?.pause();
       if (stand.el) stand.el.muted = true;
+      if (stand.el && !mediaReady(stand.el, next)) {
+        stand.ready = false;
+      } else if (stand.el) {
+        stand.ready = true;
+      }
     });
   }
 
@@ -633,10 +658,15 @@
    * with a decoded frame ready for swap.
    */
   function maybePrerollStandby(fromClip: Clip, videoTime: number) {
-    if (!shouldPrerollStandby(fromClip.sourceOut, videoTime, PREFETCH_PREROLL)) return;
+    if (!shouldPrerollStandby(fromClip.sourceOut, videoTime, STANDBY_PLAY_LEAD)) return;
+    const next = nextClipAfter(previewProject(), fromClip, app.metaByPath);
+    if (!next) return;
     const stand = standbySlot();
-    if (!stand.el || !stand.ready || stand.clipId == null) return;
+    if (!stand.el || stand.clipId !== next.id) return;
     if (stand.el.seeking) return;
+    // Soft-ready: accept HAVE_CURRENT_DATA even if the ready flag lagged.
+    if (!mediaReady(stand.el, next)) return;
+    stand.ready = true;
     // Keep muted; do not steal the audio clock from the active clip.
     stand.el.muted = true;
     if (stand.el.paused) void stand.el.play().catch(() => {});
@@ -644,12 +674,13 @@
 
   function swapToStandby(nextClip: Clip): boolean {
     const stand = standbySlot();
-    if (stand.clipId !== nextClip.id || !stand.ready || !stand.el) return false;
-    // Need a real frame for video swaps (metadata-only still flashes black).
+    if (stand.clipId !== nextClip.id || !stand.el) return false;
+    // Soft ready: accept HAVE_CURRENT_DATA even if the flag lagged.
     if (!mediaReady(stand.el, nextClip)) {
       stand.ready = false;
       return false;
     }
+    stand.ready = true;
 
     // Only seamless-swap when we actually need the clip's sourceIn (hard cut).
     // Mid-clip play-in / scrub targets must go through seek, not preroll sourceIn.
@@ -658,9 +689,14 @@
       sourceTimeAt(nextClip, app.playhead),
       CLIP_END_EPS,
     );
-    if (Math.abs(needSt - nextClip.sourceIn) > 0.06) {
+    if (!isHardCutIntoSourceIn(needSt, nextClip.sourceIn, HARD_CUT_TOL)) {
       return false;
     }
+
+    // Paint the *next* frame before pausing the previous decoder — holds the canvas
+    // even if the flip is slow.
+    paintFrom(stand, nextClip);
+    holdFrame = true;
 
     const prev = activeSlot();
     prev.el?.pause();
@@ -671,8 +707,9 @@
 
     const active = activeSlot();
     if (active.el) {
-      // Preroll may leave us slightly before sourceIn — snap to sourceIn then play.
-      if (Math.abs(active.el.currentTime - needSt) > 0.04) {
+      // If free-run already rolled past sourceIn, keep going; only snap if still early.
+      const ct = active.el.currentTime;
+      if (ct < needSt - 0.02 || Math.abs(ct - needSt) > 0.35) {
         try {
           active.el.currentTime = needSt;
         } catch {
@@ -682,7 +719,6 @@
       playSlotAudio(active.el, nextClip);
     }
     applyAudioState();
-    // Paint immediately from the new active (or keep prior holdFrame if paint fails).
     if (!paintFrom(active, nextClip)) {
       paint();
     }
@@ -699,7 +735,9 @@
     const st = clampSourceSeek(clip, sourceTimeAt(clip, app.playhead), CLIP_END_EPS);
 
     // Prefer prefetched standby only for true hard cuts at sourceIn.
-    if (Math.abs(st - clip.sourceIn) <= 0.06 && swapToStandby(clip)) return;
+    if (isHardCutIntoSourceIn(st, clip.sourceIn, HARD_CUT_TOL) && swapToStandby(clip)) {
+      return;
+    }
 
     // Same-file continuation on active: seek without reload
     const active = activeSlot();
@@ -855,6 +893,8 @@
       );
 
       if (playingClipId !== clip.id) {
+        // Hold prior frame while the new winner loads (gap→clip or cold cut).
+        holdFrame = true;
         const gen = ++syncGen;
         void startClipPlayback(clip, gen);
         paint();
@@ -936,7 +976,13 @@
           } else {
             // Don't pull the head back to play-in once we're past it.
             t = mapped < playStart ? playStart : mapped;
-            if (shouldPrefetchNearCut(clip.sourceOut, vidT, PREFETCH_LEAD)) {
+            // Warm next as soon as we're inside the lead, or if standby is empty.
+            const stand = standbySlot();
+            if (
+              !stand.ready ||
+              stand.clipId == null ||
+              shouldPrefetchNearCut(clip.sourceOut, vidT, PREFETCH_LEAD)
+            ) {
               schedulePrefetch(clip);
             }
             maybePrerollStandby(clip, vidT);
@@ -945,6 +991,7 @@
         }
       } else {
         // Still loading — hold last good frame (do not clear holdFrame).
+        holdFrame = true;
         paint();
       }
     } else {
@@ -957,22 +1004,29 @@
         t = playEnd;
       }
       // Real gap: clear held frame only when nothing video is resolving at t.
+      // If the next clip is already under the playhead (or imminent), keep hold.
       const stillVideo = videoClipAtTime(proj, t, app.metaByPath);
-      if (!stillVideo) {
+      const upcoming = videoClipAtTime(proj, t + 0.05, app.metaByPath);
+      if (!stillVideo && !upcoming) {
         holdFrame = false;
         paintBlack();
       } else {
+        if (stillVideo || upcoming) holdFrame = true;
         paint();
       }
-      if (!hitPlayOut(t, playEnd)) {
-        const upcoming = videoClipAtTime(proj, t + 0.01, app.metaByPath);
-        if (upcoming && upcoming.clip.timelineStart < playEnd && standbySlot().clipId !== upcoming.clip.id) {
+      if (!hitPlayOut(t, playEnd) && upcoming && upcoming.clip.timelineStart < playEnd) {
+        const stand = standbySlot();
+        if (stand.clipId !== upcoming.clip.id || !stand.ready) {
           const gen = ++prefetchGen;
           prefetchClipId = upcoming.clip.id;
-          void prepareSlot(standbySlot(), upcoming.clip, upcoming.clip.sourceIn, {
+          void prepareSlot(stand, upcoming.clip, upcoming.clip.sourceIn, {
             play: false,
             preroll: true,
             valid: () => gen === prefetchGen && app.playing,
+          }).then((ok) => {
+            if (ok && gen === prefetchGen && stand.el) {
+              stand.ready = mediaReady(stand.el, upcoming.clip);
+            }
           });
         }
       }
