@@ -1,7 +1,7 @@
 {
   "name": "slop-video-compositor",
   "version": "0.1.0",
-  "description": "Desktop multi-shot hard-cut video compositor: multi-track timeline, reframe, export one animator-friendly H.264+AAC MP4",
+  "description": "Desktop hard-cut video compositor: multi-track timeline, filmstrips, audio beds, reframe, export H.264+AAC MP4",
   "type": "module",
   "author": "Meigo",
   "license": "MIT",
