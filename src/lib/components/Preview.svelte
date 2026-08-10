@@ -214,11 +214,16 @@
   }
 
   function applyAudioState() {
+    let clipMuted = false;
+    if (playingClipId) {
+      const found = findClip(previewProject(), playingClipId);
+      clipMuted = found?.clip.muted === true;
+    }
     for (const s of slots) {
       if (!s.el) continue;
-      // Only the active free-running slot should make sound.
+      // Only the active free-running slot should make sound (and only if clip not muted).
       const isActive = s === activeSlot() && playingClipId != null && s.clipId === playingClipId;
-      s.el.muted = app.previewMuted || !app.playing || !isActive;
+      s.el.muted = app.previewMuted || clipMuted || !app.playing || !isActive;
       if (s.el.volume !== 1) s.el.volume = 1;
     }
   }
@@ -345,7 +350,7 @@
     if (!slot.ready) return false;
 
     if (opts.play && app.playing) {
-      slot.el.muted = app.previewMuted;
+      slot.el.muted = app.previewMuted || clip.muted === true;
       void slot.el.play().catch(() => {});
     } else {
       slot.el.pause();
@@ -443,7 +448,7 @@
     const active = activeSlot();
     if (active.el) {
       // Already seeked to sourceIn from prefetch — play immediately
-      active.el.muted = app.previewMuted;
+      active.el.muted = app.previewMuted || nextClip.muted === true;
       void active.el.play().catch(() => {});
     }
     applyAudioState();
@@ -673,6 +678,8 @@
 
   $effect(() => {
     void app.previewMuted;
+    // Re-apply when per-clip mute changes on the project.
+    void project();
     applyAudioState();
   });
 

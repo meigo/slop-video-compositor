@@ -52,7 +52,7 @@ export function flattenProject(
       transform: { ...clip.transform },
       srcW: meta?.width ?? 0,
       srcH: meta?.height ?? 0,
-      hasAudio: meta?.hasAudio ?? false,
+      hasAudio: (meta?.hasAudio ?? false) && clip.muted !== true,
     });
   }
 

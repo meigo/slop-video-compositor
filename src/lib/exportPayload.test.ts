@@ -89,6 +89,26 @@ describe("toExportOpts", () => {
       has_audio: false,
     });
   });
+
+  it("treats muted clips as no audio on export", () => {
+    const p = createProject();
+    p.tracks[0].clips.push({
+      id: "a",
+      sourcePath: "/a.mp4",
+      sourceIn: 0,
+      sourceOut: 2,
+      timelineStart: 0,
+      transform: defaultTransform(),
+      muted: true,
+    });
+    const opts = toExportOpts(p, meta, "/out.mp4");
+    const clip = opts.segments.find((s) => s.kind === "clip");
+    expect(clip).toMatchObject({
+      kind: "clip",
+      source_path: "/a.mp4",
+      has_audio: false,
+    });
+  });
 });
 
 describe("flattenProject merge / trailing black", () => {

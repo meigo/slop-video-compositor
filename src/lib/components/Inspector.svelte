@@ -20,6 +20,7 @@
       sourceOut?: number;
       timelineStart?: number;
       transform?: { scale?: number; x?: number; y?: number };
+      muted?: boolean;
     }) => void;
     onResetTransform: () => void;
     onRelink: () => void;
@@ -136,6 +137,26 @@
           <span class="secs">({roundTo(clip.sourceOut - clip.sourceIn, 2)}s)</span>
         </span>
       </div>
+      <label
+        class="check-row"
+        title={meta != null && !meta.hasAudio
+          ? "Source has no audio (mute still silences if audio appears after relink)"
+          : "Silence this clip in preview and export"}
+      >
+        <input
+          type="checkbox"
+          checked={clip.muted === true}
+          onchange={(e) => onUpdate({ muted: (e.target as HTMLInputElement).checked })}
+        />
+        <span class="label-inline">
+          {#if clip.muted}
+            <VolumeX size={14} strokeWidth={2} aria-hidden="true" />
+          {:else}
+            <Volume2 size={14} strokeWidth={2} aria-hidden="true" />
+          {/if}
+          Mute clip
+        </span>
+      </label>
     </div>
 
     <h3>Transform</h3>
@@ -356,5 +377,29 @@
   .reset {
     align-self: flex-start;
     margin-top: 0.15rem;
+  }
+
+  .check-row {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.1rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .check-row input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    accent-color: var(--accent, #5b8def);
+  }
+
+  .label-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--text);
   }
 </style>

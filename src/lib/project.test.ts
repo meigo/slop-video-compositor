@@ -157,6 +157,43 @@ describe("parse/serialize", () => {
     });
     expect(again.duration).toBe(5);
   });
+
+  it("defaults missing clip.muted to false and preserves true", () => {
+    const base = {
+      version: 1 as const,
+      name: "m",
+      canvas: { width: 100, height: 100 },
+      duration: 5,
+      tracks: [
+        {
+          id: "t1",
+          name: "V1",
+          clips: [
+            {
+              id: "c1",
+              sourcePath: "/a.mp4",
+              sourceIn: 0,
+              sourceOut: 2,
+              timelineStart: 0,
+              transform: { scale: 1, x: 0, y: 0 },
+            },
+            {
+              id: "c2",
+              sourcePath: "/b.mp4",
+              sourceIn: 0,
+              sourceOut: 2,
+              timelineStart: 2,
+              transform: { scale: 1, x: 0, y: 0 },
+              muted: true,
+            },
+          ],
+        },
+      ],
+    };
+    const again = parseProject(base);
+    expect(again.tracks[0].clips[0].muted).toBe(false);
+    expect(again.tracks[0].clips[1].muted).toBe(true);
+  });
   it("rejects bad version", () => {
     expect(() => parseProject({ version: 99, name: "x", canvas: { width: 1, height: 1 }, tracks: [] })).toThrow();
   });

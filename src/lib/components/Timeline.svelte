@@ -3,6 +3,7 @@
   import Layers from "@lucide/svelte/icons/layers";
   import Maximize2 from "@lucide/svelte/icons/maximize-2";
   import Plus from "@lucide/svelte/icons/plus";
+  import VolumeX from "@lucide/svelte/icons/volume-x";
   import ZoomIn from "@lucide/svelte/icons/zoom-in";
   import {
     addTrack,
@@ -803,10 +804,11 @@
                     class="clip"
                     class:active={isClipSelected(clip.id)}
                     class:primary={clip.id === app.selectedClipId && app.selectedClipIds.length > 1}
+                    class:muted-clip={clip.muted === true}
                     class:dragging={dragClipId === clip.id ||
                       (dragKind === "move" && dragGroupIds.includes(clip.id) && didMove)}
                     style="{colorVars}; left: {usedLeft}px; width: {usedW}px"
-                    title={clip.sourcePath}
+                    title={clip.muted ? `${clip.sourcePath} (muted)` : clip.sourcePath}
                     role="button"
                     tabindex="0"
                     onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id)}
@@ -825,6 +827,11 @@
                       aria-hidden="true"
                       onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id, "in")}
                     ></span>
+                    {#if clip.muted}
+                      <span class="clip-mute" title="Muted" aria-hidden="true">
+                        <VolumeX size={12} strokeWidth={2.5} />
+                      </span>
+                    {/if}
                     <span class="clip-label">{basename(clip.sourcePath)}</span>
                     <span
                       class="edge out"
@@ -1339,6 +1346,19 @@
     cursor: grabbing;
     opacity: 0.92;
     z-index: 2;
+  }
+
+  .clip-mute {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.2rem;
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  .clip.muted-clip {
+    opacity: 0.78;
   }
 
   .clip-label {

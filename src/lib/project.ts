@@ -191,6 +191,8 @@ function parseClip(raw: unknown, path: string): Clip {
     sourceOut: c.sourceOut,
     timelineStart: c.timelineStart,
     transform: { scale: t.scale, x: t.x, y: t.y },
+    // Back-compat: older projects omit muted → audible.
+    muted: c.muted === true,
   };
 }
 

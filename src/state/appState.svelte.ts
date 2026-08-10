@@ -413,6 +413,7 @@ export async function importVideos(placement: ImportPlacement = app.importPlacem
           sourceOut: meta.duration,
           timelineStart,
           transform: defaultTransform(),
+          muted: false,
         };
         p = addClip(p, destTrackId, clip);
         lastClipId = clip.id;
@@ -790,6 +791,7 @@ export function updateSelectedClipFields(patch: {
   sourceOut?: number;
   timelineStart?: number;
   transform?: Partial<ClipTransform>;
+  muted?: boolean;
 }) {
   const id = app.selectedClipId;
   if (!id) return;
@@ -821,12 +823,16 @@ export function updateSelectedClipFields(patch: {
     sourceIn,
     sourceOut,
     timelineStart,
+    muted: patch.muted !== undefined ? patch.muted : prev.muted,
     transform: patch.transform
       ? { ...prev.transform, ...patch.transform }
       : prev.transform,
   };
   // Timing edits can create same-track overlaps — overwrite neighbors (clip wins).
   commitProject(overwriteWithClip(replaceClip(project(), id, next), id));
+  if (patch.muted !== undefined) {
+    app.status = patch.muted ? "Clip muted" : "Clip unmuted";
+  }
 }
 
 export function resetSelectedTransform() {

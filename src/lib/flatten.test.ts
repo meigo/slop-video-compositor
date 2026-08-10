@@ -29,6 +29,22 @@ describe("flattenProject", () => {
     const segs = flattenProject(p, meta);
     expect(segs.some((s) => s.kind === "black" && s.t0 === 2 && s.t1 === 5)).toBe(true);
   });
+  it("sets hasAudio false when clip is muted even if source has audio", () => {
+    const p = createProject();
+    p.tracks[0].clips.push({
+      id: "a",
+      sourcePath: "/a.mp4",
+      sourceIn: 0,
+      sourceOut: 2,
+      timelineStart: 0,
+      transform: defaultTransform(),
+      muted: true,
+    });
+    const segs = flattenProject(p, meta);
+    const clip = segs.find((s) => s.kind === "clip");
+    expect(clip).toMatchObject({ kind: "clip", hasAudio: false });
+  });
+
   it("higher track wins in middle", () => {
     const p = createProject();
     p.tracks[0].clips.push({

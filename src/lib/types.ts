@@ -7,6 +7,8 @@ export type Clip = {
   sourceOut: number;
   timelineStart: number;
   transform: ClipTransform;
+  /** When true, export and preview silence this clip (source may still have audio). */
+  muted?: boolean;
 };
 
 export type Track = { id: string; name: string; clips: Clip[] };
