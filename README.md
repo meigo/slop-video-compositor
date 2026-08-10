@@ -3,9 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub](https://img.shields.io/badge/github-meigo%2Fslop--video--compositor-181717?logo=github)](https://github.com/meigo/slop-video-compositor)
 
-Desktop multi-shot **hard-cut** video compositor: load local video and audio onto tracks, trim/cut/reorder, reframe on a fixed canvas, export one animator-friendly **H.264 + AAC MP4**.
-
-Sits between **[slop-video-downloader](https://github.com/meigo/slop-video-downloader)** and **[slop-animator](https://github.com/meigo/slop-animator)**: gather clips → compose here → open the MP4 as a video reference in the animator.
+Desktop multi-shot **hard-cut** video compositor: load local video and audio onto tracks, trim/cut/reorder, reframe on a fixed canvas, export one **H.264 + AAC MP4**.
 
 ![Slop Video Compositor — preview, inspector, multi-track timeline with filmstrips and markers](docs/screenshot.png)
 
@@ -88,9 +86,18 @@ npm run tauri dev
 6. **Canvas ▾** — presets (1080p, 720p, vertical, square) or custom even W×H.
 7. **Save** project JSON (absolute source paths). Dirty projects autosave as `name.autosave.json`.
 8. **Export** → MP4 (last export dir or `~/Movies/Slop Refs`) → Finder reveals on success.
-9. Open the MP4 in **slop-animator** as a video reference.
+9. Use the MP4 wherever you need a single hard-cut reference (any editor, player, or pipeline).
 
 Missing media: **Relink…** or **Reveal** in the Inspector. Open warns if sources fail to probe.
+
+### Related tools
+
+Optional companions in the same family (not required to use this app):
+
+- **[slop-video-downloader](https://github.com/meigo/slop-video-downloader)** — gather source clips  
+- **[slop-animator](https://github.com/meigo/slop-animator)** — open the exported MP4 as a video reference  
+
+Typical flow when using all three: download → compose here → animate from the export.
 
 ## Keyboard shortcuts
 
