@@ -1143,12 +1143,16 @@
                   title="{marker.label} @ {formatTimestamp(marker.t)} — click seek, double-click rename, Alt+click remove"
                   aria-label="Marker {marker.label}"
                   onpointerdown={(e) => {
+                    // Keep hits on the marker (not ruler scrub / playhead).
                     e.stopPropagation();
                     if (e.altKey) {
                       e.preventDefault();
                       deleteMarker(marker.id);
                       return;
                     }
+                    // detail >= 2 is the 2nd click of a double-click — skip seek
+                    // so the playhead doesn't jump under the cursor before rename.
+                    if (e.detail >= 2) return;
                     setPlayhead(marker.t);
                     app.status = `Marker ${marker.label}`;
                   }}
@@ -1662,17 +1666,24 @@
     white-space: nowrap;
   }
 
+  /* Hit box covers stem + flag + label (not just the 2px line). */
   .marker {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: max-content;
+    min-width: 1.75rem;
+    max-width: 6rem;
     margin-left: -8px;
-    padding: 0;
+    padding: 1px 4px 0 3px;
     border: none;
     background: transparent;
     cursor: pointer;
-    z-index: 3;
+    z-index: 5;
+    box-sizing: border-box;
   }
 
   .marker::before {
@@ -1693,29 +1704,32 @@
   }
 
   .marker-flag {
-    position: absolute;
-    top: 1px;
-    left: 3px;
+    position: relative;
+    z-index: 1;
+    flex: 0 0 auto;
     width: 0;
     height: 0;
-    border-left: 9px solid var(--warn);
+    margin-top: 0;
+    border-left: 10px solid var(--warn);
     border-right: 0 solid transparent;
-    border-bottom: 8px solid transparent;
+    border-bottom: 9px solid transparent;
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+    pointer-events: none;
   }
 
   .marker-label {
-    position: absolute;
-    top: 11px;
-    left: 10px;
-    max-width: 4.5rem;
-    padding: 0 3px;
+    position: relative;
+    z-index: 1;
+    max-width: 5rem;
+    margin-top: 1px;
+    margin-left: 1px;
+    padding: 0 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.65rem;
     font-weight: 600;
-    line-height: 1.2;
+    line-height: 1.25;
     color: #1a1408;
     background: var(--warn);
     border-radius: 2px;
@@ -1724,18 +1738,18 @@
 
   .marker.editing {
     width: auto;
+    max-width: none;
     z-index: 6;
     pointer-events: auto;
   }
 
   .marker-rename {
-    position: absolute;
-    top: 9px;
-    left: 10px;
+    position: relative;
+    z-index: 1;
     width: 6.5rem;
     min-width: 4rem;
     max-width: 10rem;
-    margin: 0;
+    margin: 1px 0 0 1px;
     padding: 0.1em 0.3em;
     font-size: 0.7rem;
     font-weight: 600;
@@ -2056,13 +2070,17 @@
     background: rgba(240, 113, 120, 0.18);
   }
 
-  /* Wide invisible hit target for easier grab */
+  /*
+   * Wide grab target for the playhead — starts *below* the ruler so marker
+   * flags/labels stay clickable after a seek lands the playhead on a marker.
+   * Scrub in the ruler still works via the ruler surface itself.
+   */
   .playhead-hit {
     position: absolute;
-    top: 0;
+    top: 28px; /* = RULER_H */
     left: -5px;
     width: 12px;
-    height: 100%;
+    height: calc(100% - 28px);
     background: transparent;
   }
 
@@ -2076,6 +2094,7 @@
     border-right: 6px solid transparent;
     border-top: 9px solid var(--danger);
     filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8));
+    pointer-events: none;
   }
 
   .duration-handle {
