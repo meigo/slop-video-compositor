@@ -3,6 +3,7 @@
   import Layers from "@lucide/svelte/icons/layers";
   import Maximize2 from "@lucide/svelte/icons/maximize-2";
   import Plus from "@lucide/svelte/icons/plus";
+  import Music from "@lucide/svelte/icons/music";
   import VolumeX from "@lucide/svelte/icons/volume-x";
   import ZoomIn from "@lucide/svelte/icons/zoom-in";
   import {
@@ -827,6 +828,11 @@
                       aria-hidden="true"
                       onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id, "in")}
                     ></span>
+                    {#if (app.metaByPath.get(clip.sourcePath)?.width ?? 1) === 0}
+                      <span class="clip-mute" title="Audio only" aria-hidden="true">
+                        <Music size={12} strokeWidth={2.5} />
+                      </span>
+                    {/if}
                     {#if clip.muted}
                       <span class="clip-mute" title="Muted" aria-hidden="true">
                         <VolumeX size={12} strokeWidth={2.5} />

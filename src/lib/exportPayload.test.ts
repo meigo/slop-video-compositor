@@ -109,6 +109,65 @@ describe("toExportOpts", () => {
       has_audio: false,
     });
   });
+
+  it("maps audio-only meta as zero size with audio", () => {
+    const audioMeta = new Map<string, SourceMeta>([
+      ["/bed.mp3", { path: "/bed.mp3", duration: 30, width: 0, height: 0, hasAudio: true }],
+    ]);
+    const p = createProject();
+    p.tracks[0].clips.push({
+      id: "a",
+      sourcePath: "/bed.mp3",
+      sourceIn: 0,
+      sourceOut: 5,
+      timelineStart: 0,
+      transform: defaultTransform(),
+    });
+    const opts = toExportOpts(p, audioMeta, "/out.mp4");
+    const clip = opts.segments.find((s) => s.kind === "clip");
+    expect(clip).toMatchObject({
+      kind: "clip",
+      source_path: "/bed.mp3",
+      src_w: 0,
+      src_h: 0,
+      has_audio: true,
+      duration: 5,
+    });
+  });
+
+  it("wires bed underlay paths for video + audio bed", () => {
+    const m = new Map<string, SourceMeta>([
+      ...meta,
+      ["/bed.m4a", { path: "/bed.m4a", duration: 30, width: 0, height: 0, hasAudio: true }],
+    ]);
+    const p = createProject();
+    p.tracks[0].clips.push({
+      id: "bed",
+      sourcePath: "/bed.m4a",
+      sourceIn: 0,
+      sourceOut: 5,
+      timelineStart: 0,
+      transform: defaultTransform(),
+    });
+    p.tracks[1].clips.push({
+      id: "vid",
+      sourcePath: "/a.mp4",
+      sourceIn: 2,
+      sourceOut: 6,
+      timelineStart: 0,
+      transform: defaultTransform(),
+    });
+    const opts = toExportOpts(p, m, "/out.mp4");
+    const clip = opts.segments.find((s) => s.kind === "clip");
+    expect(clip).toMatchObject({
+      kind: "clip",
+      source_path: "/a.mp4",
+      source_start: 2,
+      has_audio: true,
+      bed_source_path: "/bed.m4a",
+      bed_source_start: 0,
+    });
+  });
 });
 
 describe("flattenProject merge / trailing black", () => {

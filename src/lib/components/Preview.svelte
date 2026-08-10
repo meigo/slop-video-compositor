@@ -1,6 +1,6 @@
 <script lang="ts">
   import { convertFileSrc } from "@tauri-apps/api/core";
-  import { onDestroy } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import { findClip } from "$lib/clips";
   import {
     clampSourceSeek,
@@ -11,7 +11,7 @@
     sourceTimeAt,
   } from "$lib/previewTime";
   import { cloneProject, projectDuration } from "$lib/project";
-  import { clipAtTime } from "$lib/resolve";
+  import { audioBedAtTime, videoClipAtTime } from "$lib/resolve";
   import { clamp } from "$lib/time";
   import { drawRect } from "$lib/transform";
   import type { Clip, ClipTransform, Project } from "$lib/types";
@@ -50,6 +50,13 @@
   let canvasEl: HTMLCanvasElement | undefined = $state();
   let videoA: HTMLVideoElement | undefined = $state();
   let videoB: HTMLVideoElement | undefined = $state();
+  /** Separate underlay for audio-only beds (plays under picture). */
+  let bedAudioEl: HTMLAudioElement | undefined = $state();
+  let bedClipId: string | null = null;
+  let bedPath: string | null = null;
+  let bedLoadGen = 0;
+  /** After a loop wrap, ignore end-of-clip for a short window so free-run can settle. */
+  let wrapGraceUntilMs = 0;
 
   const slots: [Slot, Slot] = [
     { el: undefined, path: null, clipId: null, seekTo: 0, ready: false },
@@ -144,16 +151,53 @@
     return { w: 0, h: 0 };
   }
 
+  function isAudioOnlyPath(path: string | null | undefined): boolean {
+    if (!path) return false;
+    const meta = app.metaByPath.get(path);
+    return !!meta && (meta.width === 0 || meta.height === 0);
+  }
+
+  function isAudioOnlyClip(clip: Clip): boolean {
+    return isAudioOnlyPath(clip.sourcePath);
+  }
+
+  /**
+   * Audio-only files often sit at HAVE_METADATA until play starts (no video frames).
+   * Require only metadata for them; video still needs a decodable frame.
+   */
+  function mediaReady(el: HTMLVideoElement, clip: Clip): boolean {
+    if (isAudioOnlyClip(clip)) {
+      return el.readyState >= HTMLMediaElement.HAVE_METADATA;
+    }
+    return el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && el.videoWidth > 0;
+  }
+
+  /** Unmute + play the active slot when preview/clip mute allow it. */
+  function playSlotAudio(el: HTMLVideoElement, clip: Clip) {
+    el.muted = app.previewMuted || clip.muted === true;
+    if (el.volume !== 1) el.volume = 1;
+    void el.play().catch(() => {});
+  }
+
   function paintFrom(slot: Slot, clip: Clip): boolean {
     if (!canvasEl || !slot.el) return false;
-    if (slot.el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return false;
     if (slot.path !== clip.sourcePath) return false;
+    if (!mediaReady(slot.el, clip)) return false;
 
     const ctx = canvasEl.getContext("2d");
     if (!ctx) return false;
 
     const w = canvasEl.width;
     const h = canvasEl.height;
+
+    // Audio-only: black canvas (export will do the same).
+    if (isAudioOnlyClip(clip)) {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, w, h);
+      holdFrame = true;
+      return true;
+    }
+
     const dims = srcDims(clip, slot.el);
     if (dims.w <= 0 || dims.h <= 0) return false;
 
@@ -182,9 +226,9 @@
 
   function paint() {
     if (!canvasEl) return;
-    const hit = clipAtTime(previewProject(), app.playhead);
+    const hit = videoClipAtTime(previewProject(), app.playhead, app.metaByPath);
 
-    // Timeline gap — show real black
+    // No video (gap or audio-only bed only) — black picture
     if (!hit) {
       paintBlack();
       return;
@@ -226,9 +270,108 @@
       s.el.muted = app.previewMuted || clipMuted || !app.playing || !isActive;
       if (s.el.volume !== 1) s.el.volume = 1;
     }
+    // Bed mute uses loaded bedClipId — never read app.playhead here (would re-trigger
+    // the play $effect every free-run tick and thrash seeks).
+    if (bedAudioEl) {
+      let bedMuted = !bedClipId;
+      if (bedClipId) {
+        const found = findClip(previewProject(), bedClipId);
+        bedMuted = !found || found.clip.muted === true;
+      }
+      bedAudioEl.muted = app.previewMuted || bedMuted || !app.playing;
+      if (bedAudioEl.volume !== 1) bedAudioEl.volume = 1;
+    }
   }
 
-  function waitEvent(el: HTMLVideoElement, event: string, timeoutMs = 8000): Promise<void> {
+  function clearBedAudio() {
+    bedClipId = null;
+    bedPath = null;
+    if (bedAudioEl) {
+      bedAudioEl.pause();
+      bedAudioEl.muted = true;
+    }
+  }
+
+  /**
+   * Load/seek underlay bed once (scrub, play start, bed change). Not for rAF tick.
+   */
+  async function syncBedAudio(timelineT: number, play: boolean) {
+    const el = bedAudioEl;
+    if (!el) return;
+    const gen = ++bedLoadGen;
+    const bed = audioBedAtTime(previewProject(), timelineT, app.metaByPath);
+    if (!bed) {
+      clearBedAudio();
+      return;
+    }
+    const clip = bed.clip;
+    const path = clip.sourcePath;
+    const st = clampSourceSeek(clip, sourceTimeAt(clip, timelineT), CLIP_END_EPS);
+
+    if (bedPath !== path || bedClipId !== clip.id) {
+      bedPath = path;
+      bedClipId = clip.id;
+      el.pause();
+      el.src = assetUrl(path);
+      el.load();
+      await waitEvent(el, "loadedmetadata", 4000);
+      if (gen !== bedLoadGen) return;
+    }
+
+    try {
+      if (Math.abs(el.currentTime - st) > 0.05) el.currentTime = st;
+    } catch {
+      /* ignore */
+    }
+    if (gen !== bedLoadGen) return;
+
+    el.muted = app.previewMuted || clip.muted === true || !play;
+    if (el.volume !== 1) el.volume = 1;
+    if (play && app.playing) {
+      void el.play().catch(() => {});
+    } else {
+      el.pause();
+      el.muted = true;
+    }
+  }
+
+  /**
+   * Lightweight rAF maintenance: free-run the current bed, only resync on large drift
+   * or when the winning bed clip changes.
+   */
+  function maintainBedAudio(timelineT: number) {
+    const el = bedAudioEl;
+    if (!el || !app.playing) return;
+
+    const bed = audioBedAtTime(previewProject(), timelineT, app.metaByPath);
+    if (!bed) {
+      if (bedClipId) clearBedAudio();
+      return;
+    }
+
+    const clip = bed.clip;
+    // New bed at this time — full load/seek (async once).
+    if (bedClipId !== clip.id || bedPath !== clip.sourcePath) {
+      void syncBedAudio(timelineT, true);
+      return;
+    }
+
+    // Free-run: only correct big drift (don't fight the decoder every frame).
+    const expected = sourceTimeAt(clip, timelineT);
+    if (!el.seeking && Math.abs(el.currentTime - expected) > 0.45) {
+      try {
+        el.currentTime = clampSourceSeek(clip, expected, CLIP_END_EPS);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    el.muted = app.previewMuted || clip.muted === true;
+    if (el.volume !== 1) el.volume = 1;
+    if (el.paused) void el.play().catch(() => {});
+  }
+
+  function waitEvent(el: HTMLMediaElement, event: string, timeoutMs = 8000): Promise<void> {
     return new Promise((resolve) => {
       let done = false;
       const finish = () => {
@@ -243,8 +386,12 @@
     });
   }
 
-  /** Wait until the element has a decodable frame (import often races paint before this). */
-  function waitForFrame(el: HTMLVideoElement, timeoutMs = 4000): Promise<void> {
+  /** Wait until the element has a decodable frame (or metadata for audio-only). */
+  function waitForFrame(
+    el: HTMLVideoElement,
+    timeoutMs = 4000,
+    audioOnly = false,
+  ): Promise<void> {
     return new Promise((resolve) => {
       let done = false;
       const finish = () => {
@@ -252,6 +399,7 @@
         done = true;
         clearTimeout(timer);
         el.removeEventListener("loadeddata", onReady);
+        el.removeEventListener("loadedmetadata", onReady);
         el.removeEventListener("canplay", onReady);
         el.removeEventListener("seeked", onReady);
         resolve();
@@ -261,18 +409,23 @@
       const anyEl = el as HTMLVideoElement & {
         requestVideoFrameCallback?: (cb: () => void) => number;
       };
-      if (typeof anyEl.requestVideoFrameCallback === "function") {
+      if (!audioOnly && typeof anyEl.requestVideoFrameCallback === "function") {
         anyEl.requestVideoFrameCallback(() => finish());
         // Still arm media events in case RVFC is delayed while paused
       }
 
       const onReady = () => {
-        if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && el.videoWidth > 0) {
-          // Two rAFs: first layout, second after the browser presents the frame
-          requestAnimationFrame(() => requestAnimationFrame(finish));
+        if (audioOnly) {
+          if (el.readyState < HTMLMediaElement.HAVE_METADATA) return;
+        } else {
+          if (el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+          if (el.videoWidth <= 0) return;
         }
+        // Two rAFs: first layout, second after the browser presents the frame
+        requestAnimationFrame(() => requestAnimationFrame(finish));
       };
       el.addEventListener("loadeddata", onReady);
+      el.addEventListener("loadedmetadata", onReady);
       el.addEventListener("canplay", onReady);
       el.addEventListener("seeked", onReady);
       onReady();
@@ -282,7 +435,11 @@
   async function loadPath(slot: Slot, path: string): Promise<boolean> {
     const el = slot.el;
     if (!el) return false;
-    if (slot.path === path && el.src && el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    const audioOnly = isAudioOnlyPath(path);
+    const readyEnough = audioOnly
+      ? el.readyState >= HTMLMediaElement.HAVE_METADATA
+      : el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+    if (slot.path === path && el.src && readyEnough) {
       return true;
     }
 
@@ -291,21 +448,34 @@
     el.pause();
     el.src = assetUrl(path);
     el.load();
-    await waitEvent(el, "loadeddata");
+    // Audio-only often fires loadedmetadata first; video needs loadeddata/frame.
+    if (audioOnly) {
+      if (el.readyState < HTMLMediaElement.HAVE_METADATA) {
+        await waitEvent(el, "loadedmetadata");
+      }
+    } else {
+      await waitEvent(el, "loadeddata");
+    }
     if (slot.path !== path) return false;
-    if (el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    if (!audioOnly && el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
       await waitEvent(el, "canplay", 4000);
     }
-    await waitForFrame(el);
+    await waitForFrame(el, 4000, audioOnly);
     return slot.path === path;
   }
 
-  async function seekSlot(slot: Slot, t: number, _force = false): Promise<void> {
+  async function seekSlot(
+    slot: Slot,
+    t: number,
+    clip: Clip,
+    _force = false,
+  ): Promise<void> {
     const el = slot.el;
     if (!el) return;
     const target = Math.max(0, t);
     slot.seekTo = target;
     slot.ready = false;
+    const audioOnly = isAudioOnlyClip(clip);
 
     // Already there — many engines won't fire `seeked` if currentTime is unchanged
     if (Math.abs(el.currentTime - target) > 0.01) {
@@ -318,8 +488,8 @@
       await p;
     }
 
-    await waitForFrame(el);
-    if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && el.videoWidth > 0) {
+    await waitForFrame(el, 4000, audioOnly);
+    if (mediaReady(el, clip)) {
       slot.ready = true;
     }
   }
@@ -342,16 +512,14 @@
     if (!ok || !opts.valid()) return false;
 
     const st = clampSourceSeek(clip, sourceT, CLIP_END_EPS);
-    await seekSlot(slot, st, true);
+    await seekSlot(slot, st, clip, true);
     if (!opts.valid() || slot.clipId !== clip.id) return false;
 
-    slot.ready =
-      slot.el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && slot.el.videoWidth > 0;
+    slot.ready = mediaReady(slot.el, clip);
     if (!slot.ready) return false;
 
     if (opts.play && app.playing) {
-      slot.el.muted = app.previewMuted || clip.muted === true;
-      void slot.el.play().catch(() => {});
+      playSlotAudio(slot.el, clip);
     } else {
       slot.el.pause();
       slot.el.muted = true;
@@ -363,7 +531,7 @@
   function onDecoderFrame() {
     if (app.playing) return;
     bindSlots();
-    const hit = clipAtTime(previewProject(), app.playhead);
+    const hit = videoClipAtTime(previewProject(), app.playhead, app.metaByPath);
     if (!hit) return;
     const active = activeSlot();
     if (active.path === hit.clip.sourcePath && active.el) {
@@ -381,9 +549,11 @@
     const gen = ++syncGen;
     bindSlots();
 
-    const hit = clipAtTime(previewProject(), app.playhead);
+    const hit = videoClipAtTime(previewProject(), app.playhead, app.metaByPath);
     const active = activeSlot();
     standbySlot().el?.pause();
+
+    void syncBedAudio(app.playhead, false);
 
     if (!hit) {
       active.el?.pause();
@@ -413,7 +583,8 @@
     const proj = previewProject();
     // With loop on, the sequence's first clip follows the last one — warm it like any cut.
     const next =
-      nextClipAfter(proj, fromClip) ?? (app.loopPlayback ? firstClipInSequence(proj) : null);
+      nextClipAfter(proj, fromClip, app.metaByPath) ??
+      (app.loopPlayback ? firstClipInSequence(proj, app.metaByPath) : null);
     if (!next) {
       prefetchClipId = null;
       return;
@@ -448,8 +619,7 @@
     const active = activeSlot();
     if (active.el) {
       // Already seeked to sourceIn from prefetch — play immediately
-      active.el.muted = app.previewMuted || nextClip.muted === true;
-      void active.el.play().catch(() => {});
+      playSlotAudio(active.el, nextClip);
     }
     applyAudioState();
     paint();
@@ -475,14 +645,14 @@
       playingClipId = clip.id;
       active.clipId = clip.id;
       const st = clampSourceSeek(clip, sourceTimeAt(clip, app.playhead), CLIP_END_EPS);
-      await seekSlot(active, st, true);
+      await seekSlot(active, st, clip, true);
       if (!app.playing || gen !== syncGen) {
         if (playingClipId === clip.id) playingClipId = null;
         return;
       }
-      active.ready = true;
+      active.ready = mediaReady(active.el, clip);
       applyAudioState();
-      void active.el.play().catch(() => {});
+      playSlotAudio(active.el, clip);
       paint();
       schedulePrefetch(clip);
       return;
@@ -517,9 +687,11 @@
     app.status = status;
     playingClipId = null;
     prefetchClipId = null;
+    wrapGraceUntilMs = 0;
     for (const s of slots) {
       s.el?.pause();
     }
+    bedAudioEl?.pause();
     applyAudioState();
     paint();
     stopRaf();
@@ -530,9 +702,15 @@
    * like any other hard cut; otherwise fall back to a cold start on the next tick.
    */
   function wrapToStart() {
+    // Ignore end-of-clip detection briefly — decoder may still report old currentTime.
+    wrapGraceUntilMs = performance.now() + 180;
     setPlayhead(0);
-    const hit = clipAtTime(previewProject(), 0);
-    if (hit && swapToStandby(hit.clip)) return;
+    void syncBedAudio(0, true);
+    const hit = videoClipAtTime(previewProject(), 0, app.metaByPath);
+    if (hit && swapToStandby(hit.clip)) {
+      paint();
+      return;
+    }
 
     playingClipId = null;
     for (const s of slots) {
@@ -562,12 +740,17 @@
     }
 
     let t = app.playhead;
-    const hit = clipAtTime(proj, t);
+    const hit = videoClipAtTime(proj, t, app.metaByPath);
     const active = activeSlot();
+    const inWrapGrace = now < wrapGraceUntilMs;
+
+    // Free-run underlay (no per-frame async reload/seek thrash).
+    maintainBedAudio(t);
 
     if (hit && active.el) {
       const clip = hit.clip;
       const end = clipTimelineEnd(clip);
+      const mediaLive = active.el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
 
       if (playingClipId !== clip.id) {
         const gen = ++syncGen;
@@ -575,30 +758,35 @@
         paint();
       } else if (active.el.seeking) {
         paint(); // hold frame
-      } else if (active.el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      } else if (mediaLive) {
         const vidT = active.el.currentTime;
-        const pastOut = vidT >= clip.sourceOut - CLIP_END_EPS;
-        const ended = active.el.ended;
+        // During wrap grace, never treat as past out (avoids loop oscillation).
+        const pastOut =
+          !inWrapGrace && (vidT >= clip.sourceOut - CLIP_END_EPS || active.el.ended);
 
-        if (pastOut || ended) {
+        if (pastOut) {
           t = end;
           active.el.pause();
-          // Instant swap if prefetched
-          const next = nextClipAfter(proj, clip);
+          const next = nextClipAfter(proj, clip, app.metaByPath);
           playingClipId = null;
           if (next && swapToStandby(next)) {
-            // playhead at cut; free-run continues on new active
             t = next.timelineStart;
           }
         } else {
-          t = clip.timelineStart + Math.max(0, vidT - clip.sourceIn);
-          // Prefetch near the cut
-          if (shouldPrefetchNearCut(clip.sourceOut, vidT, PREFETCH_LEAD)) {
-            schedulePrefetch(clip);
-          }
           if (active.el.paused) {
             applyAudioState();
-            void active.el.play().catch(() => {});
+            playSlotAudio(active.el, clip);
+          }
+          // Prefer free-run clock; during wrap grace clamp to clip range so we
+          // don't snap to sequence end from a stale decoder timestamp.
+          let mapped = clip.timelineStart + Math.max(0, active.el.currentTime - clip.sourceIn);
+          if (inWrapGrace) {
+            mapped = Math.min(mapped, end - 1e-4);
+            mapped = Math.max(mapped, clip.timelineStart);
+          }
+          t = mapped;
+          if (shouldPrefetchNearCut(clip.sourceOut, vidT, PREFETCH_LEAD)) {
+            schedulePrefetch(clip);
           }
         }
         paint();
@@ -606,14 +794,13 @@
         paint();
       }
     } else {
-      // Black gap
+      // Black gap or audio-bed-only — advance by wall clock.
       playingClipId = null;
       active.el?.pause();
       t = t + wallDt;
       holdFrame = false;
       paint();
-      // Prefetch whatever starts after this gap
-      const upcoming = clipAtTime(proj, t + 0.01);
+      const upcoming = videoClipAtTime(proj, t + 0.01, app.metaByPath);
       if (upcoming && standbySlot().clipId !== upcoming.clip.id) {
         const gen = ++prefetchGen;
         prefetchClipId = upcoming.clip.id;
@@ -629,7 +816,13 @@
         stopPlayback(totalDur, "Paused");
         return;
       }
-      // wrapToStart sets the playhead itself — skip the setPlayhead(t) below.
+      if (inWrapGrace) {
+        // Stay at start until grace elapses / decoder catches up.
+        t = 0;
+        setPlayhead(0);
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
       wrapToStart();
       rafId = requestAnimationFrame(tick);
       return;
@@ -645,7 +838,8 @@
     rafId = requestAnimationFrame(tick);
   }
 
-  // Playback loop
+  // Playback loop — must NOT read app.playhead (set every free-run tick) or this
+  // effect restarts continuously: stopRaf → clear playingClipId → seek thrash.
   $effect(() => {
     bindSlots();
     if (app.playing) {
@@ -653,15 +847,20 @@
       prefetchClipId = null;
       applyAudioState();
       startRaf();
+      untrack(() => {
+        void syncBedAudio(app.playhead, true);
+      });
       return () => {
         stopRaf();
         playingClipId = null;
+        bedAudioEl?.pause();
       };
     }
     stopRaf();
     playingClipId = null;
     prefetchClipId = null;
     for (const s of slots) s.el?.pause();
+    bedAudioEl?.pause();
     applyAudioState();
   });
 
@@ -685,9 +884,12 @@
 
   $effect(() => {
     if (!canvasEl) return;
+    void canvasW;
+    void canvasH;
     if (canvasEl.width !== canvasW) canvasEl.width = canvasW;
     if (canvasEl.height !== canvasH) canvasEl.height = canvasH;
-    paint();
+    // Don't subscribe to playhead via paint() — tick already paints while playing.
+    untrack(() => paint());
   });
 
   /**
@@ -771,7 +973,7 @@
    * not a covered selection on a lower track.
    */
   function transformTargetClip(): Clip | null {
-    return clipAtTime(previewProject(), app.playhead)?.clip ?? null;
+    return videoClipAtTime(previewProject(), app.playhead, app.metaByPath)?.clip ?? null;
   }
 
   function startViewPan(e: PointerEvent) {
@@ -987,6 +1189,7 @@
     detachViewPanListeners();
     videoA?.pause();
     videoB?.pause();
+    bedAudioEl?.pause();
   });
 </script>
 
@@ -1045,6 +1248,9 @@
     onseeked={onDecoderFrame}
     oncanplay={onDecoderFrame}
   ></video>
+  <!-- Audio-only beds underlay picture (any track order) -->
+  <!-- svelte-ignore a11y_media_has_caption -->
+  <audio bind:this={bedAudioEl} class="decoder" preload="auto"></audio>
 </div>
 
 <style>
@@ -1182,11 +1388,17 @@
     font-size: 0.75rem;
   }
 
+  /*
+   * Off-screen decoders must stay in the rendering tree with a non-zero box.
+   * opacity:0 / 1×1 can suppress audio decode in WebKit for audio-only media.
+   */
   .decoder {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
+    left: -9999px;
+    top: 0;
+    width: 16px;
+    height: 16px;
+    opacity: 1;
     pointer-events: none;
     overflow: hidden;
   }

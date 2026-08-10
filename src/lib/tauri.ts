@@ -29,6 +29,13 @@ export function toSourceMeta(path: string, meta: MediaMeta): SourceMeta {
   };
 }
 
+/** Probe reported no video stream (audio-only import / relink). */
+export function isAudioOnlyMeta(
+  meta: Pick<SourceMeta, "width" | "height"> | null | undefined,
+): boolean {
+  return !!meta && (meta.width === 0 || meta.height === 0);
+}
+
 export const exportProject = (opts: ExportOpts) =>
   invoke<ExportResult>("export_project", { opts });
 
@@ -97,36 +104,47 @@ export async function saveProjectFileAs(
   return path;
 }
 
-const VIDEO_FILTERS = [
+const VIDEO_EXTENSIONS = ["mp4", "mov", "mkv", "webm", "m4v", "avi"];
+const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "aiff", "aif"];
+
+const MEDIA_FILTERS = [
+  {
+    name: "Media",
+    extensions: [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS],
+  },
   {
     name: "Video",
-    extensions: ["mp4", "mov", "mkv", "webm", "m4v", "avi"],
+    extensions: VIDEO_EXTENSIONS,
+  },
+  {
+    name: "Audio",
+    extensions: AUDIO_EXTENSIONS,
   },
 ];
 
-/** Multi-select video files for import. Returns [] if cancelled. */
+/** Multi-select video/audio files for import. Returns [] if cancelled. */
 export async function pickVideoFiles(
   defaultPath?: string | null,
 ): Promise<string[]> {
   const selected = await open({
     multiple: true,
     directory: false,
-    filters: VIDEO_FILTERS,
+    filters: MEDIA_FILTERS,
     defaultPath: defaultPath ?? undefined,
-    title: "Import videos",
+    title: "Import media",
   });
   if (selected === null) return [];
   return Array.isArray(selected) ? selected : [selected];
 }
 
-/** Single video file for relink. Returns null if cancelled. */
+/** Single video/audio file for relink. Returns null if cancelled. */
 export async function pickVideoFile(
   defaultPath?: string | null,
 ): Promise<string | null> {
   const selected = await open({
     multiple: false,
     directory: false,
-    filters: VIDEO_FILTERS,
+    filters: MEDIA_FILTERS,
     defaultPath: defaultPath ?? undefined,
     title: "Relink media",
   });

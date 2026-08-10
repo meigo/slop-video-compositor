@@ -1,7 +1,7 @@
 import { clipDuration, projectDuration } from "./project";
-import { clipAtTime } from "./resolve";
+import { videoClipAtTime } from "./resolve";
 import { clamp } from "./time";
-import type { Clip, Project } from "./types";
+import type { Clip, Project, SourceMeta } from "./types";
 
 /** Map timeline time → source media time for a clip. */
 export function sourceTimeAt(clip: Clip, timelineT: number): number {
@@ -23,11 +23,14 @@ export function clampSourceSeek(clip: Clip, sourceT: number, endEps = 1 / 30): n
 }
 
 /**
- * Next hard-cut media clip after `clip`'s exclusive end (skips black gaps).
- * Uses timeline cut points (clip starts ≥ end) rather than a fixed micro-step walk.
- * Pure helper for dual-buffer prefetch / cut swaps.
+ * Next hard-cut **video** clip after `clip`'s exclusive end (skips black gaps
+ * and ignores audio-only beds). Pure helper for dual-buffer prefetch / cut swaps.
  */
-export function nextClipAfter(project: Project, clip: Clip): Clip | null {
+export function nextClipAfter(
+  project: Project,
+  clip: Clip,
+  metaByPath: Map<string, SourceMeta>,
+): Clip | null {
   const end = clipTimelineEnd(clip);
   const total = projectDuration(project);
   if (!(end < total)) return null;
@@ -44,17 +47,20 @@ export function nextClipAfter(project: Project, clip: Clip): Clip | null {
 
   const sorted = [...candidates].sort((a, b) => a - b);
   for (const t of sorted) {
-    const hit = clipAtTime(project, t);
+    const hit = videoClipAtTime(project, t, metaByPath);
     if (hit && hit.clip.id !== clip.id) return hit.clip;
   }
   return null;
 }
 
 /**
- * First hard-cut clip in the sequence (skips a leading black gap).
- * Pure helper for loop wrap-around prefetch; null when the timeline has no media.
+ * First hard-cut **video** clip in the sequence (skips a leading black gap and
+ * audio-only beds). Pure helper for loop wrap-around prefetch.
  */
-export function firstClipInSequence(project: Project): Clip | null {
+export function firstClipInSequence(
+  project: Project,
+  metaByPath: Map<string, SourceMeta>,
+): Clip | null {
   const total = projectDuration(project);
   const candidates = new Set<number>([0]);
   for (const track of project.tracks) {
@@ -67,7 +73,7 @@ export function firstClipInSequence(project: Project): Clip | null {
 
   const sorted = [...candidates].sort((a, b) => a - b);
   for (const t of sorted) {
-    const hit = clipAtTime(project, t);
+    const hit = videoClipAtTime(project, t, metaByPath);
     if (hit) return hit.clip;
   }
   return null;

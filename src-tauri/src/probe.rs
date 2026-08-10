@@ -14,6 +14,9 @@ pub struct MediaMeta {
 
 /// Parse ffmpeg probe stderr (Duration + first Video stream WxH + Audio presence).
 ///
+/// Audio-only sources (no video stream) are allowed: `width`/`height` are 0.
+/// Files with neither video nor audio are rejected.
+///
 /// Restricts scanning to the input section (before "Stream mapping:" / "Output #")
 /// so remux/null output streams are not double-counted.
 pub fn parse_ffmpeg_probe_output(stderr: &str) -> Result<MediaMeta, String> {
@@ -21,9 +24,17 @@ pub fn parse_ffmpeg_probe_output(stderr: &str) -> Result<MediaMeta, String> {
 
     let duration = parse_duration(input)
         .ok_or_else(|| "Could not parse Duration from ffmpeg output".to_string())?;
-    let (width, height) = parse_video_size(input)
-        .ok_or_else(|| "Could not parse video dimensions from ffmpeg output".to_string())?;
     let has_audio = input_has_audio(input);
+    let (width, height) = match parse_video_size(input) {
+        Some(wh) => wh,
+        None if has_audio => (0, 0),
+        None => {
+            return Err(
+                "Could not parse video dimensions from ffmpeg output (no video or audio stream)"
+                    .to_string(),
+            );
+        }
+    };
 
     Ok(MediaMeta {
         duration,
@@ -214,9 +225,25 @@ Output #0, null, to 'pipe:':
     }
 
     #[test]
-    fn rejects_missing_video_stream() {
-        let err = parse_ffmpeg_probe_output(FIXTURE_MISSING_VIDEO).unwrap_err();
-        assert!(err.to_lowercase().contains("dimension") || err.to_lowercase().contains("video"));
+    fn parses_audio_only_as_zero_dimensions() {
+        let m = parse_ffmpeg_probe_output(FIXTURE_MISSING_VIDEO).unwrap();
+        assert!((m.duration - 10.0).abs() < 1e-6);
+        assert_eq!((m.width, m.height), (0, 0));
+        assert!(m.has_audio);
+    }
+
+    #[test]
+    fn rejects_neither_video_nor_audio() {
+        let s = r#"Input #0, data, from 'empty.bin':
+  Duration: 00:00:01.00, start: 0.000000, bitrate: 0 kb/s
+"#;
+        let err = parse_ffmpeg_probe_output(s).unwrap_err();
+        assert!(
+            err.to_lowercase().contains("dimension")
+                || err.to_lowercase().contains("video")
+                || err.to_lowercase().contains("audio"),
+            "err={err}"
+        );
     }
 
     #[test]

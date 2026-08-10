@@ -8,7 +8,9 @@ import {
   shouldPrefetchNearCut,
   sourceTimeAt,
 } from "./previewTime";
-import type { Clip } from "./types";
+import type { Clip, SourceMeta } from "./types";
+
+const emptyMeta = new Map<string, SourceMeta>();
 
 function clip(over: Partial<Clip> = {}): Clip {
   return {
@@ -46,48 +48,85 @@ describe("nextClipAfter", () => {
     const a = clip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 2 });
     const b = clip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 2 });
     p.tracks[0].clips.push(a, b);
-    expect(nextClipAfter(p, a)?.id).toBe("b");
+    expect(nextClipAfter(p, a, emptyMeta)?.id).toBe("b");
   });
 
   it("returns null when nothing follows", () => {
     const p = createProject();
     const a = clip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 2 });
     p.tracks[0].clips.push(a);
-    expect(nextClipAfter(p, a)).toBeNull();
+    expect(nextClipAfter(p, a, emptyMeta)).toBeNull();
+  });
+
+  it("skips audio-only beds when finding the next video clip", () => {
+    const p = createProject();
+    const a = clip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 2 });
+    const bed = clip({
+      id: "bed",
+      sourcePath: "/bed.m4a",
+      timelineStart: 2,
+      sourceIn: 0,
+      sourceOut: 10,
+    });
+    const b = clip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 2 });
+    p.tracks[0].clips.push(a, b);
+    p.tracks[1].clips.push(bed);
+    const meta = new Map<string, SourceMeta>([
+      ["/bed.m4a", { path: "/bed.m4a", duration: 10, width: 0, height: 0, hasAudio: true }],
+    ]);
+    expect(nextClipAfter(p, a, meta)?.id).toBe("b");
   });
 });
 
 describe("firstClipInSequence", () => {
   it("returns null for an empty project", () => {
-    expect(firstClipInSequence(createProject())).toBeNull();
+    expect(firstClipInSequence(createProject(), emptyMeta)).toBeNull();
   });
 
   it("returns the clip at time 0", () => {
     const p = createProject();
     const a = clip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 2 });
     p.tracks[0].clips.push(a);
-    expect(firstClipInSequence(p)?.id).toBe("a");
+    expect(firstClipInSequence(p, emptyMeta)?.id).toBe("a");
   });
 
   it("skips a leading black gap", () => {
     const p = createProject();
     const a = clip({ id: "a", timelineStart: 3, sourceIn: 0, sourceOut: 2 });
     p.tracks[0].clips.push(a);
-    expect(firstClipInSequence(p)?.id).toBe("a");
+    expect(firstClipInSequence(p, emptyMeta)?.id).toBe("a");
   });
 
   it("prefers the higher track when both cover the start", () => {
     const p = createProject();
     p.tracks[0].clips.push(clip({ id: "lo", timelineStart: 0, sourceIn: 0, sourceOut: 4 }));
     p.tracks[1].clips.push(clip({ id: "hi", timelineStart: 0, sourceIn: 0, sourceOut: 4 }));
-    expect(firstClipInSequence(p)?.id).toBe("hi");
+    expect(firstClipInSequence(p, emptyMeta)?.id).toBe("hi");
   });
 
   it("returns the earliest clip when clips start at different times", () => {
     const p = createProject();
     p.tracks[0].clips.push(clip({ id: "late", timelineStart: 5, sourceIn: 0, sourceOut: 2 }));
     p.tracks[0].clips.push(clip({ id: "early", timelineStart: 1, sourceIn: 0, sourceOut: 2 }));
-    expect(firstClipInSequence(p)?.id).toBe("early");
+    expect(firstClipInSequence(p, emptyMeta)?.id).toBe("early");
+  });
+
+  it("skips a leading audio-only bed", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      clip({
+        id: "bed",
+        sourcePath: "/bed.m4a",
+        timelineStart: 0,
+        sourceIn: 0,
+        sourceOut: 10,
+      }),
+    );
+    p.tracks[1].clips.push(clip({ id: "vid", timelineStart: 2, sourceIn: 0, sourceOut: 3 }));
+    const meta = new Map<string, SourceMeta>([
+      ["/bed.m4a", { path: "/bed.m4a", duration: 10, width: 0, height: 0, hasAudio: true }],
+    ]);
+    expect(firstClipInSequence(p, meta)?.id).toBe("vid");
   });
 });
 

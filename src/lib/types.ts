@@ -71,6 +71,14 @@ export type ExportResult = {
   output_path: string;
 };
 
+/** Optional audio-only underlay mixed under the picture clip on export/preview. */
+export type SegmentBedAudio = {
+  clipId: string;
+  sourcePath: string;
+  /** Source media time at segment start */
+  sourceStart: number;
+};
+
 /** Flattened export/preview segment */
 export type Segment =
   | {
@@ -87,5 +95,7 @@ export type Segment =
       srcW: number;
       srcH: number;
       hasAudio: boolean;
+      /** Topmost unmuted audio-only bed covering this range (plays under picture). */
+      bedAudio?: SegmentBedAudio;
     }
   | { kind: "black"; t0: number; t1: number };

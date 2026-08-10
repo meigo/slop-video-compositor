@@ -70,7 +70,11 @@
         </span>
       {:else}
         <span class="meta muted">
-          {meta.width}×{meta.height}
+          {#if meta.width > 0 && meta.height > 0}
+            {meta.width}×{meta.height}
+          {:else}
+            audio only
+          {/if}
           · {formatTimestamp(meta.duration)}
           ·
           {#if meta.hasAudio}

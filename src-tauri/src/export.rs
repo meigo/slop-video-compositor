@@ -23,6 +23,11 @@ pub enum ExportSegment {
         src_w: u32,
         src_h: u32,
         has_audio: bool,
+        /// Optional audio-only underlay mixed under the picture source.
+        #[serde(default)]
+        bed_source_path: Option<String>,
+        #[serde(default)]
+        bed_source_start: Option<f64>,
     },
     Black {
         duration: f64,
@@ -322,32 +327,58 @@ pub fn clip_segment_args(
         src_w,
         src_h,
         has_audio,
+        bed_source_path,
+        bed_source_start,
     } = seg
     else {
         panic!("clip_segment_args requires ExportSegment::Clip");
     };
 
-    let px = pixel_draw_rect(*src_w, *src_h, canvas_w, canvas_h, *scale, *x, *y);
     let start = fmt_f(*source_start);
     let dur = fmt_f(*duration);
     let can = format!("{canvas_w}x{canvas_h}");
+    let bed_path = bed_source_path
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let has_bed = bed_path.is_some();
 
-    // After input -ss, media timestamps are near 0 — trim from start of that window.
-    let video = format!(
-        "[0:v]trim=start=0:duration={dur},setpts=PTS-STARTPTS,scale={}:{},setsar=1[v];\
+    // Audio-only (no video stream): black canvas + source audio (or silence if muted).
+    // Zero src dims come from probe of wav/mp3/m4a/etc.
+    let audio_only = *src_w == 0 || *src_h == 0;
+    if audio_only && !*has_audio && !has_bed {
+        return black_segment_args(*duration, canvas_w, canvas_h, out);
+    }
+
+    let video = if audio_only {
+        format!("color=c=black:s={can}:d={dur}:r=30,format=yuv420p[vout]")
+    } else {
+        let px = pixel_draw_rect(*src_w, *src_h, canvas_w, canvas_h, *scale, *x, *y);
+        // After input -ss, media timestamps are near 0 — trim from start of that window.
+        format!(
+            "[0:v]trim=start=0:duration={dur},setpts=PTS-STARTPTS,scale={}:{},setsar=1[v];\
 color=c=black:s={can}:d={dur}:r=30[bg];\
 [bg][v]overlay={}:{}:shortest=1,format=yuv420p[vout]",
-        px.w, px.h, px.x, px.y
-    );
-
-    let audio = if *has_audio {
-        // Force stereo so concat with anullsrc stereo black segments never fails
-        // on mono (or other non-stereo) source audio.
-        format!(
-            "[0:a]atrim=start=0:duration={dur},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
+            px.w, px.h, px.x, px.y
         )
-    } else {
-        format!("anullsrc=r=48000:cl=stereo,atrim=duration={dur}[a]")
+    };
+
+    // Stereo graph; optional second input is the audio-only bed under picture.
+    let audio = match (*has_audio, has_bed) {
+        (true, true) => format!(
+            "[0:a]atrim=start=0:duration={dur},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a0];\
+[1:a]atrim=start=0:duration={dur},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a1];\
+[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[a]"
+        ),
+        (false, true) => format!(
+            "[1:a]atrim=start=0:duration={dur},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
+        ),
+        (true, false) => format!(
+            "[0:a]atrim=start=0:duration={dur},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
+        ),
+        (false, false) => {
+            format!("anullsrc=r=48000:cl=stereo,atrim=duration={dur}[a]")
+        }
     };
 
     let filter = format!("{video};{audio}");
@@ -358,9 +389,20 @@ color=c=black:s={can}:d={dur}:r=30[bg];\
         args.push("-ss".into());
         args.push(start);
     }
+    args.push("-i".into());
+    args.push(source_path.clone());
+
+    if let Some(bed) = bed_path {
+        let bed_ss = bed_source_start.unwrap_or(0.0);
+        if bed_ss > 0.0 {
+            args.push("-ss".into());
+            args.push(fmt_f(bed_ss));
+        }
+        args.push("-i".into());
+        args.push(bed.to_string());
+    }
+
     args.extend([
-        "-i".into(),
-        source_path.clone(),
         "-filter_complex".into(),
         filter,
         "-map".into(),
@@ -447,6 +489,8 @@ mod tests {
             src_w: 100,
             src_h: 100,
             has_audio,
+            bed_source_path: None,
+            bed_source_start: None,
         }
     }
 
@@ -529,6 +573,104 @@ mod tests {
     }
 
     #[test]
+    fn audio_only_clip_uses_black_video_and_source_audio() {
+        let seg = ExportSegment::Clip {
+            source_path: "/music/bed.mp3".into(),
+            source_start: 1.0,
+            duration: 3.0,
+            scale: 1.0,
+            x: 0.0,
+            y: 0.0,
+            src_w: 0,
+            src_h: 0,
+            has_audio: true,
+            bed_source_path: None,
+            bed_source_start: None,
+        };
+        let args = clip_segment_args(&seg, 1920, 1080, "/tmp/a.mp4");
+        assert!(args.contains(&"/music/bed.mp3".to_string()));
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .map(|i| &args[i + 1])
+            .expect("filter_complex");
+        assert!(
+            fc.contains("color=c=black:s=1920x1080:d=3:r=30,format=yuv420p[vout]"),
+            "fc={fc}"
+        );
+        assert!(!fc.contains("[0:v]"), "fc={fc}");
+        assert!(
+            fc.contains(
+                "[0:a]atrim=start=0:duration=3,asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[a]"
+            ),
+            "fc={fc}"
+        );
+        let ss_idx = args.iter().position(|a| a == "-ss").expect("-ss");
+        assert_eq!(args[ss_idx + 1], "1");
+    }
+
+    #[test]
+    fn video_with_bed_mixes_second_audio_input() {
+        let seg = ExportSegment::Clip {
+            source_path: "/v.mp4".into(),
+            source_start: 0.0,
+            duration: 2.0,
+            scale: 1.0,
+            x: 0.0,
+            y: 0.0,
+            src_w: 100,
+            src_h: 100,
+            has_audio: true,
+            bed_source_path: Some("/bed.m4a".into()),
+            bed_source_start: Some(0.5),
+        };
+        let args = clip_segment_args(&seg, 200, 100, "/tmp/mix.mp4");
+        assert!(args.contains(&"/v.mp4".to_string()));
+        assert!(args.contains(&"/bed.m4a".to_string()));
+        let ss_positions: Vec<_> = args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| *a == "-ss")
+            .map(|(i, _)| i)
+            .collect();
+        // bed seek only (video start is 0)
+        assert_eq!(ss_positions.len(), 1);
+        assert_eq!(args[ss_positions[0] + 1], "0.5");
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .map(|i| &args[i + 1])
+            .unwrap();
+        assert!(fc.contains("amix=inputs=2"), "fc={fc}");
+        assert!(fc.contains("[0:a]"), "fc={fc}");
+        assert!(fc.contains("[1:a]"), "fc={fc}");
+    }
+
+    #[test]
+    fn muted_audio_only_clip_uses_black_segment_args() {
+        let seg = ExportSegment::Clip {
+            source_path: "/music/bed.mp3".into(),
+            source_start: 0.0,
+            duration: 1.5,
+            scale: 1.0,
+            x: 0.0,
+            y: 0.0,
+            src_w: 0,
+            src_h: 0,
+            has_audio: false,
+            bed_source_path: None,
+            bed_source_start: None,
+        };
+        let args = clip_segment_args(&seg, 640, 360, "/tmp/m.mp4");
+        // Delegates to black+silence generators — no source path.
+        assert!(!args.iter().any(|a| a.contains("bed.mp3")));
+        assert!(args.contains(&"lavfi".to_string()));
+        assert!(args
+            .iter()
+            .any(|a| a.starts_with("color=c=black:s=640x360:d=1.5:r=30")));
+    }
+
+    #[test]
     fn clip_args_apply_scale_and_pan_geometry() {
         // Matches geometry test: scale=2, pan=(10,-5) → w/h=200, x=60, y=-5
         let seg = ExportSegment::Clip {
@@ -541,6 +683,8 @@ mod tests {
             src_w: 100,
             src_h: 100,
             has_audio: true,
+            bed_source_path: None,
+            bed_source_start: None,
         };
         let args = clip_segment_args(&seg, 200, 100, "out.mp4");
         let fc = args

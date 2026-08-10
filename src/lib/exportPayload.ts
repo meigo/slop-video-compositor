@@ -14,6 +14,9 @@ export type ExportSegmentWire =
       src_w: number;
       src_h: number;
       has_audio: boolean;
+      /** Optional audio-only underlay (mixed under picture audio). */
+      bed_source_path?: string | null;
+      bed_source_start?: number | null;
     }
   | { kind: "black"; duration: number };
 
@@ -44,6 +47,8 @@ export function toExportOpts(
       src_w: s.srcW,
       src_h: s.srcH,
       has_audio: s.hasAudio,
+      bed_source_path: s.bedAudio?.sourcePath ?? null,
+      bed_source_start: s.bedAudio?.sourceStart ?? null,
     };
   });
   return {
