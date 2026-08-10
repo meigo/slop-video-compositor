@@ -43,6 +43,22 @@ export const generateFilmstrip = (opts: {
   // Tauri arg-name mismatches on multi-param commands).
   invoke<FilmstripResult>("generate_filmstrip", { opts });
 
+/** Wire shape from Rust `generate_waveform`. */
+export type WaveformResult = {
+  data_url: string;
+  cached: boolean;
+  width: number;
+  height: number;
+};
+
+/** Build (or return cached) full-media waveform PNG as a data URL. */
+export const generateWaveform = (opts: {
+  path: string;
+  duration: number;
+  width: number;
+  height: number;
+}) => invoke<WaveformResult>("generate_waveform", { opts });
+
 /** Map Rust MediaMeta → SourceMeta by attaching the source path. */
 export function toSourceMeta(path: string, meta: MediaMeta): SourceMeta {
   return {

@@ -27,6 +27,7 @@
   } from "$lib/clips";
   import { clipColorCssVars } from "$lib/clipColor";
   import ClipFilmstrip from "$lib/components/ClipFilmstrip.svelte";
+  import ClipWaveform from "$lib/components/ClipWaveform.svelte";
   import {
     clearFilmstripErrors,
     clearFilmstripMemoryCache,
@@ -36,6 +37,15 @@
     subscribeFilmstrips,
   } from "$lib/filmstripCache";
   import type { FilmstripReady } from "$lib/filmstripCache";
+  import {
+    clearWaveformErrors,
+    clearWaveformMemoryCache,
+    ensureWaveform,
+    getWaveform,
+    getWaveformLastError,
+    subscribeWaveforms,
+  } from "$lib/waveformCache";
+  import type { WaveformReady } from "$lib/waveformCache";
   import {
     clipDuration,
     cloneProject,
@@ -100,8 +110,9 @@
   let editingMarkerId = $state<string | null>(null);
   let editingMarkerLabel = $state("");
   let markerRenameInput: HTMLInputElement | undefined = $state();
-  /** Bumps when a filmstrip finishes loading so clip backgrounds refresh. */
+  /** Bumps when a filmstrip / waveform finishes loading so clip backgrounds refresh. */
   let filmstripTick = $state(0);
+  let waveformTick = $state(0);
 
   type DragKind = "move" | "trim-in" | "trim-out";
 
@@ -714,14 +725,24 @@
 
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
-    return subscribeFilmstrips(() => {
+    const unsubStrip = subscribeFilmstrips(() => {
       filmstripTick++;
       const err = getFilmstripLastError();
       if (err && app.showFilmstrips) {
-        // One-line status only when something fails (not per-clip spam).
         app.status = `Filmstrip: ${err}`;
       }
     });
+    const unsubWave = subscribeWaveforms(() => {
+      waveformTick++;
+      const err = getWaveformLastError();
+      if (err && app.showFilmstrips) {
+        app.status = `Waveform: ${err}`;
+      }
+    });
+    return () => {
+      unsubStrip();
+      unsubWave();
+    };
   });
 
   onDestroy(() => {
@@ -731,7 +752,7 @@
     endDurationResize();
   });
 
-  // One full-media strip per source+height (not per trim / zoom).
+  // Full-media filmstrips / waveforms per source+height (not per trim / zoom).
   $effect(() => {
     if (!app.showFilmstrips) return;
     void p;
@@ -739,7 +760,9 @@
     void FILMSTRIP_H;
     for (const track of p.tracks) {
       for (const clip of track.clips) {
-        ensureFilmstrip(clip, app.metaByPath.get(clip.sourcePath), FILMSTRIP_H);
+        const meta = app.metaByPath.get(clip.sourcePath);
+        ensureFilmstrip(clip, meta, FILMSTRIP_H);
+        ensureWaveform(clip, meta, FILMSTRIP_H);
       }
     }
   });
@@ -754,12 +777,25 @@
     return key ? getFilmstrip(key) : null;
   }
 
+  function waveformForClip(
+    clip: (typeof p.tracks)[0]["clips"][0],
+  ): WaveformReady | null {
+    void waveformTick;
+    if (!app.showFilmstrips) return null;
+    const meta = app.metaByPath.get(clip.sourcePath);
+    const key = ensureWaveform(clip, meta, FILMSTRIP_H);
+    return key ? getWaveform(key) : null;
+  }
+
   function onToggleFilmstrips() {
     toggleFilmstrips();
     if (app.showFilmstrips) {
       clearFilmstripErrors();
       clearFilmstripMemoryCache();
+      clearWaveformErrors();
+      clearWaveformMemoryCache();
       filmstripTick++;
+      waveformTick++;
     }
   }
 </script>
@@ -891,8 +927,8 @@
         class:on={app.showFilmstrips}
         onclick={onToggleFilmstrips}
         title={app.showFilmstrips
-          ? "Hide clip filmstrips (ffmpeg)"
-          : "Show clip filmstrips (ffmpeg)"}
+          ? "Hide filmstrips / audio waveforms (ffmpeg)"
+          : "Show filmstrips / audio waveforms (ffmpeg)"}
         aria-label="Toggle filmstrips"
         aria-pressed={app.showFilmstrips}
       >
@@ -1153,6 +1189,7 @@
                   {@const postW = postSec * pxPerSecond}
                   {@const colorVars = clipColorCssVars(clip.sourcePath)}
                   {@const strip = filmstripForClip(clip)}
+                  {@const wave = waveformForClip(clip)}
                   <!-- Trimmed source still on disk: dim handles around the used range -->
                   {#if preW >= 2}
                     <div
@@ -1177,7 +1214,7 @@
                     class:active={isClipSelected(clip.id)}
                     class:primary={clip.id === app.selectedClipId && app.selectedClipIds.length > 1}
                     class:muted-clip={clip.muted === true}
-                    class:has-filmstrip={!!strip}
+                    class:has-filmstrip={!!strip || !!wave}
                     class:dragging={dragClipId === clip.id ||
                       (dragKind === "move" && dragGroupIds.includes(clip.id) && didMove)}
                     class:copying={dragCopying &&
@@ -1209,6 +1246,13 @@
                         sourceIn={clip.sourceIn}
                         sourceOut={clip.sourceOut}
                         mediaDuration={strip.mediaDuration}
+                      />
+                    {:else if wave}
+                      <ClipWaveform
+                        url={wave.url}
+                        sourceIn={clip.sourceIn}
+                        sourceOut={clip.sourceOut}
+                        mediaDuration={wave.mediaDuration}
                       />
                     {/if}
                     <span

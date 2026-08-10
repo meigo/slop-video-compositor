@@ -4,6 +4,7 @@ mod filmstrip;
 mod geometry;
 mod probe;
 mod settings;
+mod waveform;
 
 use deps::check_deps;
 use export::export_project;
@@ -13,6 +14,7 @@ use settings::{
     default_export_dir, load_settings, read_text_file, reveal_in_folder, save_settings,
     write_text_file,
 };
+use waveform::generate_waveform;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,6 +29,7 @@ pub fn run() {
             reveal_in_folder,
             probe_media,
             generate_filmstrip,
+            generate_waveform,
             export_project,
             read_text_file,
             write_text_file,
