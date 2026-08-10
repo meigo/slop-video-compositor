@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import { createProject, defaultTransform } from "./project";
 import {
   clampSourceSeek,
+  clampSourceSeekPreroll,
   clipTimelineEnd,
   firstClipInSequence,
   nextClipAfter,
   shouldPrefetchNearCut,
+  shouldPrerollStandby,
   sourceTimeAt,
 } from "./previewTime";
 import type { Clip, SourceMeta } from "./types";
@@ -134,5 +136,33 @@ describe("shouldPrefetchNearCut", () => {
   it("is true inside lead window", () => {
     expect(shouldPrefetchNearCut(10, 9.2, 0.85)).toBe(true);
     expect(shouldPrefetchNearCut(10, 5, 0.85)).toBe(false);
+    expect(shouldPrefetchNearCut(10, 8.5, 1.5)).toBe(true);
+  });
+});
+
+describe("shouldPrerollStandby", () => {
+  it("is true only inside the short preroll window", () => {
+    expect(shouldPrerollStandby(10, 9.95, 0.12)).toBe(true);
+    expect(shouldPrerollStandby(10, 9.5, 0.12)).toBe(false);
+    expect(shouldPrerollStandby(10, 9.5, 0)).toBe(false);
+  });
+});
+
+describe("clampSourceSeekPreroll", () => {
+  it("seeks slightly before sourceIn when possible", () => {
+    const c = clip({ sourceIn: 2, sourceOut: 10 });
+    expect(clampSourceSeekPreroll(c, 0.12)).toBeCloseTo(1.88, 10);
+  });
+
+  it("clamps to 0 when sourceIn is near the file start", () => {
+    const c = clip({ sourceIn: 0.05, sourceOut: 5 });
+    expect(clampSourceSeekPreroll(c, 0.12)).toBe(0);
+  });
+
+  it("never seeks at or past sourceOut", () => {
+    const c = clip({ sourceIn: 0, sourceOut: 0.05 });
+    const t = clampSourceSeekPreroll(c, 0.12, 1 / 30);
+    expect(t).toBeLessThan(0.05);
+    expect(t).toBeGreaterThanOrEqual(0);
   });
 });

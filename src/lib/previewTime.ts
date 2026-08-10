@@ -23,6 +23,43 @@ export function clampSourceSeek(clip: Clip, sourceT: number, endEps = 1 / 30): n
 }
 
 /**
+ * Standby preroll seek: a little before `sourceIn` so playback can roll into the cut
+ * past keyframe stalls. Clamped to ≥ 0 and still below sourceOut.
+ */
+export function clampSourceSeekPreroll(
+  clip: Clip,
+  prerollSecs: number,
+  endEps = 1 / 30,
+): number {
+  const preroll = Number.isFinite(prerollSecs) ? Math.max(0, prerollSecs) : 0;
+  const target = Math.max(0, clip.sourceIn - preroll);
+  const maxT = Math.max(target, clip.sourceOut - endEps);
+  return clamp(target, 0, maxT);
+}
+
+/** True when remaining media time in the active clip is within the prefetch lead. */
+export function shouldPrefetchNearCut(
+  sourceOut: number,
+  videoTime: number,
+  leadSecs: number,
+): boolean {
+  return sourceOut - videoTime <= leadSecs;
+}
+
+/**
+ * True when we should start muted free-run on the prefetched standby so it is
+ * already rolling at the cut (seek-early / play-into-cut).
+ */
+export function shouldPrerollStandby(
+  sourceOut: number,
+  videoTime: number,
+  prerollSecs: number,
+): boolean {
+  if (!(prerollSecs > 0)) return false;
+  return sourceOut - videoTime <= prerollSecs;
+}
+
+/**
  * Next hard-cut **video** clip after `clip`'s exclusive end (skips black gaps
  * and ignores audio-only beds). Pure helper for dual-buffer prefetch / cut swaps.
  */
@@ -77,13 +114,4 @@ export function firstClipInSequence(
     if (hit) return hit.clip;
   }
   return null;
-}
-
-/** True when remaining media time in the active clip is within the prefetch lead. */
-export function shouldPrefetchNearCut(
-  sourceOut: number,
-  videoTime: number,
-  leadSecs: number,
-): boolean {
-  return sourceOut - videoTime <= leadSecs;
 }

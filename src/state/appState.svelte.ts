@@ -7,6 +7,11 @@ import {
   overwriteWithClip,
 } from "$lib/clips";
 import { nextCut, prevCut } from "$lib/cuts";
+import {
+  effectivePlayBounds,
+  hasExplicitPlayRange,
+  type PlayBounds,
+} from "$lib/playRange";
 import { defaultExportFileName } from "$lib/exportName";
 import { toExportOpts } from "$lib/exportPayload";
 import {
@@ -31,6 +36,7 @@ import {
   PROJECT_FPS,
   projectDuration,
   removeMarker,
+  renameMarker,
   serializeProject,
   setProjectDuration,
   snapToFrame,
@@ -96,8 +102,14 @@ export const app = $state({
    * Export always uses the full project.
    */
   previewSoloTrackId: null as string | null,
-  /** Preview-only: when true, playback wraps to 0 instead of stopping at the end. */
+  /** Preview-only: when true, playback wraps to play-in instead of stopping at play-out. */
   loopPlayback: false,
+  /**
+   * Preview-only play range (session). `null` = unset (full sequence for that end).
+   * Not saved with the project; export still uses full program out.
+   */
+  playIn: null as number | null,
+  playOut: null as number | null,
   checkingDeps: true,
   lastProjectDir: null as string | null,
   lastExportDir: null as string | null,
@@ -619,6 +631,44 @@ export function toggleLoopPlayback() {
   app.status = app.loopPlayback ? "Loop on" : "Loop off";
 }
 
+/** Effective preview playback window (session play range or full sequence). */
+export function playBounds(): PlayBounds {
+  return effectivePlayBounds(app.playIn, app.playOut, projectDuration(project()));
+}
+
+export function setPlayInAtPlayhead() {
+  app.playIn = app.playhead;
+  // Keep a valid window if both ends exist and crossed.
+  if (app.playOut != null && app.playIn > app.playOut) {
+    app.playOut = app.playIn;
+  }
+  const b = playBounds();
+  app.status = `Play in ${b.start.toFixed(2)}s`;
+}
+
+export function setPlayOutAtPlayhead() {
+  app.playOut = app.playhead;
+  if (app.playIn != null && app.playOut < app.playIn) {
+    app.playIn = app.playOut;
+  }
+  const b = playBounds();
+  app.status = `Play out ${b.end.toFixed(2)}s`;
+}
+
+export function clearPlayRange() {
+  if (app.playIn == null && app.playOut == null) {
+    app.status = "No play range set";
+    return;
+  }
+  app.playIn = null;
+  app.playOut = null;
+  app.status = "Play range cleared";
+}
+
+export function hasPlayRange(): boolean {
+  return hasExplicitPlayRange(app.playIn, app.playOut);
+}
+
 /**
  * Step the playhead by whole frames at `PROJECT_FPS` (export rate).
  * Pauses playback. Positive = forward, negative = backward.
@@ -640,15 +690,20 @@ export function stepPlayheadSeconds(secs: number, fps = PROJECT_FPS) {
 
 export function seekPlayheadHome() {
   app.playing = false;
-  setPlayhead(0);
-  app.status = "Playhead 0";
+  const { start } = playBounds();
+  setPlayhead(start);
+  app.status = hasPlayRange()
+    ? `Playhead play-in ${start.toFixed(2)}s`
+    : "Playhead 0";
 }
 
 export function seekPlayheadEnd() {
   app.playing = false;
-  const t = projectDuration(project());
-  setPlayhead(t);
-  app.status = `Playhead ${t.toFixed(2)}s`;
+  const { end } = playBounds();
+  setPlayhead(end);
+  app.status = hasPlayRange()
+    ? `Playhead play-out ${end.toFixed(2)}s`
+    : `Playhead ${end.toFixed(2)}s`;
 }
 
 export function seekPrevCut() {
@@ -770,6 +825,13 @@ export function deleteMarker(markerId: string) {
   if (next === project()) return;
   commitProject(next);
   app.status = "Marker removed";
+}
+
+export function renameMarkerLabel(markerId: string, label: string) {
+  const next = renameMarker(project(), markerId, label);
+  if (next === project()) return;
+  commitProject(next);
+  app.status = "Marker renamed";
 }
 
 export async function revealSelectedSource() {

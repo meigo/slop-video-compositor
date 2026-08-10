@@ -1,13 +1,22 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import BookmarkPlus from "@lucide/svelte/icons/bookmark-plus";
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Layers from "@lucide/svelte/icons/layers";
   import Maximize2 from "@lucide/svelte/icons/maximize-2";
   import Plus from "@lucide/svelte/icons/plus";
   import Music from "@lucide/svelte/icons/music";
+  import Scissors from "@lucide/svelte/icons/scissors";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import VolumeX from "@lucide/svelte/icons/volume-x";
+  import X from "@lucide/svelte/icons/x";
   import ZoomIn from "@lucide/svelte/icons/zoom-in";
   import {
     addTrack,
+    duplicateClipTo,
+    duplicateClipsByDelta,
+    findClip,
     moveClip,
     moveClipsByDelta,
     splitClip,
@@ -31,16 +40,25 @@
   import { clamp, formatTimestamp } from "$lib/time";
   import type { Project } from "$lib/types";
   import {
+    addMarkerAtPlayhead,
     app,
     basename,
     clearClipSelection,
+    clearPlayRange,
     commitProject,
     commitProjectEdit,
     deleteMarker,
     deleteSelectedClips,
+    hasPlayRange,
     isClipSelected,
+    playBounds,
     project,
+    renameMarkerLabel,
+    seekNextCut,
+    seekPrevCut,
     selectClipOnly,
+    setPlayInAtPlayhead,
+    setPlayOutAtPlayhead,
     setPlayhead,
     setPresentLive,
     setTimelineDuration,
@@ -61,6 +79,10 @@
   let pxPerSecond = $state(DEFAULT_PPS);
   let scrollEl: HTMLDivElement | undefined = $state();
   let lanesEl: HTMLDivElement | undefined = $state();
+  /** Marker id currently being renamed (inline input). */
+  let editingMarkerId = $state<string | null>(null);
+  let editingMarkerLabel = $state("");
+  let markerRenameInput: HTMLInputElement | undefined = $state();
 
   type DragKind = "move" | "trim-in" | "trim-out";
 
@@ -69,7 +91,9 @@
   let dragClipId = $state<string | null>(null);
   /** Ids moved together (includes dragClipId). */
   let dragGroupIds = $state<string[]>([]);
-  let dragBefore: Project | null = null;
+  let dragBefore = $state<Project | null>(null);
+  /** Option/Alt-drag duplicate (NLE convention); Shift still disables snap. */
+  let dragCopying = $state(false);
   let dragOriginX = 0;
   let dragOriginY = 0;
   let startTimelineStart = 0;
@@ -186,6 +210,7 @@
     dragClipId = null;
     dragGroupIds = [];
     dragBefore = null;
+    dragCopying = false;
     pointerId = null;
     didMove = false;
   }
@@ -449,15 +474,24 @@
         newStart = snapClipStart(newStart, dur, targets, thresh);
       }
       const delta = newStart - startTimelineStart;
+      // Option (macOS) / Alt (Windows): leave originals, place copies (NLE convention).
+      dragCopying = e.altKey;
 
       if (dragGroupIds.length > 1) {
-        // Group: same Δt, no track change
-        setPresentLive(moveClipsByDelta(before, dragGroupIds, delta));
+        setPresentLive(
+          dragCopying
+            ? duplicateClipsByDelta(before, dragGroupIds, delta)
+            : moveClipsByDelta(before, dragGroupIds, delta),
+        );
         return;
       }
 
       const toTrackId = trackIdAtClientY(e.clientY) ?? startTrackId;
-      setPresentLive(moveClip(before, dragClipId, newStart, toTrackId));
+      setPresentLive(
+        dragCopying
+          ? duplicateClipTo(before, dragClipId, newStart, toTrackId)
+          : moveClip(before, dragClipId, newStart, toTrackId),
+      );
       if (toTrackId) app.selectedTrackId = toTrackId;
       return;
     }
@@ -500,6 +534,7 @@
     const after = project();
     const kind = dragKind;
     const moved = didMove;
+    const copied = dragCopying;
 
     detachDragListeners();
     clearDragState();
@@ -510,6 +545,30 @@
     }
 
     if (!commitProjectEdit(before, after)) return;
+
+    if (kind === "move" && copied) {
+      // Select the new copies (ids present in after but not before).
+      const beforeIds = new Set<string>();
+      for (const tr of before.tracks) {
+        for (const c of tr.clips) beforeIds.add(c.id);
+      }
+      const newIds: string[] = [];
+      for (const tr of after.tracks) {
+        for (const c of tr.clips) {
+          if (!beforeIds.has(c.id)) newIds.push(c.id);
+        }
+      }
+      if (newIds.length > 0) {
+        app.selectedClipIds = newIds;
+        app.selectedClipId = newIds[newIds.length - 1] ?? null;
+        const primary = app.selectedClipId ? findClip(after, app.selectedClipId) : null;
+        if (primary) app.selectedTrackId = after.tracks[primary.trackIndex]!.id;
+      }
+      app.status =
+        newIds.length > 1 ? `Duplicated ${newIds.length} clips` : "Duplicated clip";
+      return;
+    }
+
     app.status =
       kind === "move"
         ? app.selectedClipIds.length > 1
@@ -572,6 +631,44 @@
     return tag === "input" || tag === "textarea" || tag === "select" || !!el?.isContentEditable;
   }
 
+  function splitSelectedAtPlayhead() {
+    const id = app.selectedClipId;
+    if (!id) {
+      app.status = "Select a clip to split";
+      return;
+    }
+    const next = splitClip(project(), id, app.playhead);
+    if (next === project()) {
+      app.status = "Playhead not inside selected clip";
+      return;
+    }
+    commitProject(next);
+    app.status = "Split clip";
+  }
+
+  function beginRenameMarker(id: string, label: string) {
+    editingMarkerId = id;
+    editingMarkerLabel = label;
+    queueMicrotask(() => {
+      markerRenameInput?.focus();
+      markerRenameInput?.select();
+    });
+  }
+
+  function commitRenameMarker() {
+    const id = editingMarkerId;
+    if (!id) return;
+    const label = editingMarkerLabel;
+    editingMarkerId = null;
+    editingMarkerLabel = "";
+    renameMarkerLabel(id, label);
+  }
+
+  function cancelRenameMarker() {
+    editingMarkerId = null;
+    editingMarkerLabel = "";
+  }
+
   function onKeyDown(e: KeyboardEvent) {
     if (isTypingTarget(e.target)) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -584,18 +681,17 @@
     }
 
     if (e.key === "s" || e.key === "S") {
-      const id = app.selectedClipId;
-      if (!id) return;
       e.preventDefault();
-      const next = splitClip(project(), id, app.playhead);
-      if (next === project()) {
-        app.status = "Playhead not inside selected clip";
-        return;
-      }
-      commitProject(next);
-      app.status = "Split clip";
+      splitSelectedAtPlayhead();
     }
   }
+
+  const hasSelection = $derived(
+    app.selectedClipIds.length > 0 || app.selectedClipId != null,
+  );
+  const markerCount = $derived((p.markers ?? []).length);
+  const rangeActive = $derived(hasPlayRange());
+  const bounds = $derived(playBounds());
 
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
@@ -619,6 +715,7 @@
       <span class="muted">
         {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
         · {clipCount} clip{clipCount === 1 ? "" : "s"}
+        · {markerCount} marker{markerCount === 1 ? "" : "s"}
         · top = highest priority
       </span>
       <label
@@ -675,6 +772,119 @@
         <Plus size={16} strokeWidth={2} aria-hidden="true" />
         <span>Track</span>
       </button>
+    </div>
+  </div>
+
+  <!-- Discoverable edit tools (keyboard shortcuts still work). -->
+  <div class="timeline-tools" role="toolbar" aria-label="Timeline tools">
+    <div class="tool-group" role="group" aria-label="Navigate">
+      <button
+        type="button"
+        class="ghost tool-btn"
+        onclick={() => seekPrevCut()}
+        title="Previous cut or marker ([)"
+        aria-label="Previous cut or marker"
+      >
+        <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
+        <span>Prev</span>
+      </button>
+      <button
+        type="button"
+        class="ghost tool-btn"
+        onclick={() => seekNextCut()}
+        title="Next cut or marker (])"
+        aria-label="Next cut or marker"
+      >
+        <span>Next</span>
+        <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
+      </button>
+    </div>
+    <div class="tool-sep" aria-hidden="true"></div>
+    <div class="tool-group" role="group" aria-label="Edit">
+      <button
+        type="button"
+        class="ghost tool-btn"
+        onclick={splitSelectedAtPlayhead}
+        disabled={!app.selectedClipId}
+        title="Split selected clip at playhead (S)"
+        aria-label="Split clip at playhead"
+      >
+        <Scissors size={15} strokeWidth={2} aria-hidden="true" />
+        <span>Split</span>
+      </button>
+      <button
+        type="button"
+        class="ghost tool-btn"
+        onclick={() => deleteSelectedClips()}
+        disabled={!hasSelection}
+        title="Delete selected clip(s) (Delete)"
+        aria-label="Delete selected clips"
+      >
+        <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+        <span>Delete</span>
+      </button>
+    </div>
+    <div class="tool-sep" aria-hidden="true"></div>
+    <div class="tool-group" role="group" aria-label="Play range">
+      <button
+        type="button"
+        class="ghost tool-btn"
+        class:on={app.playIn != null}
+        onclick={() => setPlayInAtPlayhead()}
+        title="Set play-in at playhead (I) — preview only"
+        aria-label="Set play in"
+        aria-pressed={app.playIn != null}
+      >
+        <span class="io-key">I</span>
+        <span>In</span>
+      </button>
+      <button
+        type="button"
+        class="ghost tool-btn"
+        class:on={app.playOut != null}
+        onclick={() => setPlayOutAtPlayhead()}
+        title="Set play-out at playhead (O) — preview only"
+        aria-label="Set play out"
+        aria-pressed={app.playOut != null}
+      >
+        <span class="io-key">O</span>
+        <span>Out</span>
+      </button>
+      <button
+        type="button"
+        class="ghost tool-btn"
+        onclick={() => clearPlayRange()}
+        disabled={!rangeActive}
+        title="Clear play range (Esc)"
+        aria-label="Clear play range"
+      >
+        <X size={14} strokeWidth={2} aria-hidden="true" />
+        <span>Clear</span>
+      </button>
+      {#if rangeActive}
+        <span class="mono tool-hint" title="Preview plays only this range; export is unchanged">
+          {formatTimestamp(bounds.start)}–{formatTimestamp(bounds.end)}
+        </span>
+      {/if}
+    </div>
+    <div class="tool-sep" aria-hidden="true"></div>
+    <div class="tool-group" role="group" aria-label="Markers">
+      <button
+        type="button"
+        class="ghost tool-btn"
+        onclick={() => addMarkerAtPlayhead()}
+        title="Add marker at playhead (M) — click seek, double-click rename, Alt+click remove"
+        aria-label="Add marker at playhead"
+      >
+        <BookmarkPlus size={15} strokeWidth={2} aria-hidden="true" />
+        <span>Marker</span>
+      </button>
+      <span
+        class="tool-hint muted"
+        title="Markers are seek bookmarks (not exported). ⌥/Alt-drag duplicates clips."
+      >
+        dbl-click rename · ⌥-drag copy
+      </span>
     </div>
   </div>
 
@@ -735,27 +945,93 @@
                 <span class="tick-label">{formatTimestamp(t)}</span>
               </div>
             {/each}
+            {#if rangeActive && bounds.end > bounds.start}
+              <div
+                class="play-range"
+                style:left="{bounds.start * pxPerSecond}px"
+                style:width="{(bounds.end - bounds.start) * pxPerSecond}px"
+                title="Play range {formatTimestamp(bounds.start)} – {formatTimestamp(bounds.end)} (preview only)"
+                aria-hidden="true"
+              ></div>
+              {#if app.playIn != null}
+                <div
+                  class="play-io in"
+                  style:left="{bounds.start * pxPerSecond}px"
+                  aria-hidden="true"
+                >
+                  I
+                </div>
+              {/if}
+              {#if app.playOut != null}
+                <div
+                  class="play-io out"
+                  style:left="{bounds.end * pxPerSecond}px"
+                  aria-hidden="true"
+                >
+                  O
+                </div>
+              {/if}
+            {/if}
             {#each p.markers ?? [] as marker (marker.id)}
-              <button
-                type="button"
-                class="marker"
-                style:left="{marker.t * pxPerSecond}px"
-                title="{marker.label} @ {formatTimestamp(marker.t)} — click seek, Alt+click remove"
-                aria-label="Marker {marker.label}"
-                onpointerdown={(e) => {
-                  e.stopPropagation();
-                  if (e.altKey) {
+              {#if editingMarkerId === marker.id}
+                <div
+                  class="marker editing"
+                  style:left="{marker.t * pxPerSecond}px"
+                  role="group"
+                  aria-label="Rename marker"
+                >
+                  <span class="marker-flag" aria-hidden="true"></span>
+                  <input
+                    bind:this={markerRenameInput}
+                    class="marker-rename"
+                    type="text"
+                    maxlength={48}
+                    value={editingMarkerLabel}
+                    oninput={(e) => {
+                      editingMarkerLabel = (e.currentTarget as HTMLInputElement).value;
+                    }}
+                    onpointerdown={(e) => e.stopPropagation()}
+                    onkeydown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitRenameMarker();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelRenameMarker();
+                      }
+                    }}
+                    onblur={() => commitRenameMarker()}
+                    aria-label="Marker name"
+                  />
+                </div>
+              {:else}
+                <button
+                  type="button"
+                  class="marker"
+                  style:left="{marker.t * pxPerSecond}px"
+                  title="{marker.label} @ {formatTimestamp(marker.t)} — click seek, double-click rename, Alt+click remove"
+                  aria-label="Marker {marker.label}"
+                  onpointerdown={(e) => {
+                    e.stopPropagation();
+                    if (e.altKey) {
+                      e.preventDefault();
+                      deleteMarker(marker.id);
+                      return;
+                    }
+                    setPlayhead(marker.t);
+                    app.status = `Marker ${marker.label}`;
+                  }}
+                  ondblclick={(e) => {
                     e.preventDefault();
-                    deleteMarker(marker.id);
-                    return;
-                  }
-                  setPlayhead(marker.t);
-                  app.status = `Marker ${marker.label}`;
-                }}
-              >
-                <span class="marker-flag" aria-hidden="true"></span>
-                <span class="marker-label">{marker.label}</span>
-              </button>
+                    e.stopPropagation();
+                    beginRenameMarker(marker.id, marker.label);
+                  }}
+                >
+                  <span class="marker-flag" aria-hidden="true"></span>
+                  <span class="marker-label">{marker.label}</span>
+                </button>
+              {/if}
             {/each}
           </div>
 
@@ -808,8 +1084,15 @@
                     class:muted-clip={clip.muted === true}
                     class:dragging={dragClipId === clip.id ||
                       (dragKind === "move" && dragGroupIds.includes(clip.id) && didMove)}
+                    class:copying={dragCopying &&
+                      didMove &&
+                      dragKind === "move" &&
+                      dragBefore != null &&
+                      !findClip(dragBefore, clip.id)}
                     style="{colorVars}; left: {usedLeft}px; width: {usedW}px"
-                    title={clip.muted ? `${clip.sourcePath} (muted)` : clip.sourcePath}
+                    title={clip.muted
+                      ? `${clip.sourcePath} (muted) · ⌥/Alt-drag to duplicate`
+                      : `${clip.sourcePath} · ⌥/Alt-drag to duplicate`}
                     role="button"
                     tabindex="0"
                     onpointerdown={(e) => onClipPointerDown(e, clip.id, track.id)}
@@ -1232,8 +1515,8 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 12px;
-    margin-left: -6px;
+    width: 16px;
+    margin-left: -8px;
     padding: 0;
     border: none;
     background: transparent;
@@ -1241,28 +1524,179 @@
     z-index: 3;
   }
 
+  .marker::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 7px;
+    width: 2px;
+    background: var(--warn);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+
+  .marker:hover::before {
+    opacity: 1;
+    box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.35);
+  }
+
   .marker-flag {
     position: absolute;
-    top: 2px;
-    left: 5px;
+    top: 1px;
+    left: 3px;
     width: 0;
     height: 0;
-    border-left: 5px solid var(--warn);
+    border-left: 9px solid var(--warn);
     border-right: 0 solid transparent;
-    border-bottom: 7px solid transparent;
+    border-bottom: 8px solid transparent;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
   }
 
   .marker-label {
     position: absolute;
-    top: 12px;
-    left: 2px;
-    max-width: 4rem;
+    top: 11px;
+    left: 10px;
+    max-width: 4.5rem;
+    padding: 0 3px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.65rem;
-    color: var(--warn);
+    font-weight: 600;
+    line-height: 1.2;
+    color: #1a1408;
+    background: var(--warn);
+    border-radius: 2px;
     pointer-events: none;
+  }
+
+  .marker.editing {
+    width: auto;
+    z-index: 6;
+    pointer-events: auto;
+  }
+
+  .marker-rename {
+    position: absolute;
+    top: 9px;
+    left: 10px;
+    width: 6.5rem;
+    min-width: 4rem;
+    max-width: 10rem;
+    margin: 0;
+    padding: 0.1em 0.3em;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: #1a1408;
+    background: #ffe6a0;
+    border: 1px solid #c4920f;
+    border-radius: 3px;
+    outline: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  }
+
+  .marker-rename:focus {
+    border-color: var(--accent);
+  }
+
+  .timeline-tools {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    padding: 0.3rem 0.35rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .tool-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .tool-sep {
+    width: 1px;
+    height: 1.35rem;
+    background: var(--border);
+    margin: 0 0.15rem;
+  }
+
+  .timeline-tools :global(.tool-btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 1.85rem;
+    padding: 0.25em 0.55em;
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+
+  .timeline-tools :global(.tool-btn.on) {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .io-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .tool-hint {
+    font-size: 0.72rem;
+    max-width: 14rem;
+    line-height: 1.2;
+  }
+
+  .play-range {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: rgba(91, 140, 255, 0.18);
+    border-left: 2px solid var(--accent);
+    border-right: 2px solid var(--accent);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .play-io {
+    position: absolute;
+    top: 1px;
+    z-index: 2;
+    min-width: 0.9rem;
+    padding: 0 2px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1.15;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 2px;
+    pointer-events: none;
+    transform: translateX(-50%);
+  }
+
+  .play-io.in {
+    transform: translateX(0);
+  }
+
+  .play-io.out {
+    transform: translateX(-100%);
+  }
+
+  @media (max-width: 900px) {
+    .tool-hint {
+      display: none;
+    }
   }
 
   .lanes {
@@ -1352,6 +1786,13 @@
     cursor: grabbing;
     opacity: 0.92;
     z-index: 2;
+  }
+
+  .clip.copying {
+    cursor: copy;
+    outline: 1px dashed hsla(var(--clip-h), calc(var(--clip-s) * 1%), 70%, 0.9);
+    outline-offset: 1px;
+    z-index: 3;
   }
 
   .clip-mute {

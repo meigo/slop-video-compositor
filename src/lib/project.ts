@@ -300,6 +300,22 @@ export function removeMarker(project: Project, markerId: string): Project {
   return { ...project, markers };
 }
 
+/** Rename a marker. Empty/whitespace falls back to a short id-based label. */
+export function renameMarker(
+  project: Project,
+  markerId: string,
+  label: string,
+): Project {
+  const markers = project.markers ?? [];
+  const idx = markers.findIndex((m) => m.id === markerId);
+  if (idx < 0) return project;
+  const nextLabel = label.trim() || "M";
+  if (markers[idx]!.label === nextLabel) return project;
+  const next = markers.slice();
+  next[idx] = { ...markers[idx]!, label: nextLabel };
+  return { ...project, markers: next };
+}
+
 /**
  * Serialize project JSON for disk / handoff.
  * Writes effective duration (`max(stored, content)`) so external readers

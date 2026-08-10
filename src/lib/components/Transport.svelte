@@ -1,7 +1,11 @@
 <script lang="ts">
+  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Pause from "@lucide/svelte/icons/pause";
   import Play from "@lucide/svelte/icons/play";
   import Repeat from "@lucide/svelte/icons/repeat";
+  import SkipBack from "@lucide/svelte/icons/skip-back";
+  import SkipForward from "@lucide/svelte/icons/skip-forward";
   import Square from "@lucide/svelte/icons/square";
   import Volume2 from "@lucide/svelte/icons/volume-2";
   import VolumeX from "@lucide/svelte/icons/volume-x";
@@ -17,6 +21,10 @@
     onStop: () => void;
     onToggleLoop: () => void;
     onToggleMute: () => void;
+    onHome?: () => void;
+    onEnd?: () => void;
+    onPrevCut?: () => void;
+    onNextCut?: () => void;
   }
 
   let {
@@ -29,12 +37,38 @@
     onStop,
     onToggleLoop,
     onToggleMute,
+    onHome,
+    onEnd,
+    onPrevCut,
+    onNextCut,
   }: Props = $props();
 
   const ICON = 16;
 </script>
 
 <div class="transport">
+  {#if onHome}
+    <button
+      type="button"
+      class="ghost"
+      onclick={onHome}
+      title="Go to start (Home)"
+      aria-label="Go to start"
+    >
+      <SkipBack size={ICON} strokeWidth={2} aria-hidden="true" />
+    </button>
+  {/if}
+  {#if onPrevCut}
+    <button
+      type="button"
+      class="ghost"
+      onclick={onPrevCut}
+      title="Previous cut or marker ([)"
+      aria-label="Previous cut or marker"
+    >
+      <ChevronLeft size={ICON} strokeWidth={2} aria-hidden="true" />
+    </button>
+  {/if}
   <button
     type="button"
     class="ghost"
@@ -51,6 +85,28 @@
   <button type="button" class="ghost" onclick={onStop} title="Stop and return to start" aria-label="Stop">
     <Square size={15} strokeWidth={2.25} aria-hidden="true" />
   </button>
+  {#if onNextCut}
+    <button
+      type="button"
+      class="ghost"
+      onclick={onNextCut}
+      title="Next cut or marker (])"
+      aria-label="Next cut or marker"
+    >
+      <ChevronRight size={ICON} strokeWidth={2} aria-hidden="true" />
+    </button>
+  {/if}
+  {#if onEnd}
+    <button
+      type="button"
+      class="ghost"
+      onclick={onEnd}
+      title="Go to end (End)"
+      aria-label="Go to end"
+    >
+      <SkipForward size={ICON} strokeWidth={2} aria-hidden="true" />
+    </button>
+  {/if}
   <button
     type="button"
     class="ghost"

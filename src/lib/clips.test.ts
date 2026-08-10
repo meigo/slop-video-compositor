@@ -15,6 +15,8 @@ import {
   clampClipSourceToMedia,
   clampProjectSourcesToMedia,
   overwriteWithClip,
+  duplicateClipTo,
+  duplicateClipsByDelta,
 } from "./clips";
 
 function sampleClip(over: Partial<Clip> = {}): Clip {
@@ -189,6 +191,50 @@ describe("moveClip", () => {
     const p = projectWithClip();
     const next = moveClip(p, "c1", 9, "no-such-track");
     expect(next).toBe(p);
+  });
+});
+
+describe("duplicateClipTo", () => {
+  it("keeps original and adds a copy at the new start", () => {
+    const p = projectWithClip(
+      sampleClip({ id: "c1", timelineStart: 0, sourceIn: 0, sourceOut: 5 }),
+    );
+    const next = duplicateClipTo(p, "c1", 10);
+    expect(next.tracks[0].clips.find((c) => c.id === "c1")!.timelineStart).toBe(0);
+    const copies = next.tracks[0].clips.filter((c) => c.id !== "c1");
+    expect(copies).toHaveLength(1);
+    expect(copies[0]!.timelineStart).toBe(10);
+    expect(copies[0]!.sourcePath).toBe("/tmp/a.mp4");
+    expect(copies[0]!.sourceOut - copies[0]!.sourceIn).toBe(5);
+  });
+
+  it("can place the copy on another track", () => {
+    const p = projectWithClip(
+      sampleClip({ id: "c1", timelineStart: 0, sourceIn: 0, sourceOut: 4 }),
+    );
+    const next = duplicateClipTo(p, "c1", 2, p.tracks[1].id);
+    expect(next.tracks[0].clips).toHaveLength(1);
+    expect(next.tracks[0].clips[0]!.id).toBe("c1");
+    expect(next.tracks[1].clips).toHaveLength(1);
+    expect(next.tracks[1].clips[0]!.timelineStart).toBe(2);
+    expect(next.tracks[1].clips[0]!.id).not.toBe("c1");
+  });
+});
+
+describe("duplicateClipsByDelta", () => {
+  it("copies a group with the same spacing and leaves originals", () => {
+    const p = createProject();
+    p.tracks[0].clips.push(
+      sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 2 }),
+      sampleClip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 2 }),
+    );
+    const next = duplicateClipsByDelta(p, ["a", "b"], 3);
+    expect(next.tracks[0].clips.find((c) => c.id === "a")!.timelineStart).toBe(0);
+    expect(next.tracks[0].clips.find((c) => c.id === "b")!.timelineStart).toBe(5);
+    const copies = next.tracks[0].clips.filter((c) => c.id !== "a" && c.id !== "b");
+    expect(copies).toHaveLength(2);
+    const starts = copies.map((c) => c.timelineStart).sort((x, y) => x - y);
+    expect(starts).toEqual([3, 8]);
   });
 });
 

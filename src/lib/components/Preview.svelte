@@ -4,10 +4,12 @@
   import { findClip } from "$lib/clips";
   import {
     clampSourceSeek,
+    clampSourceSeekPreroll,
     clipTimelineEnd,
     firstClipInSequence,
     nextClipAfter,
     shouldPrefetchNearCut,
+    shouldPrerollStandby,
     sourceTimeAt,
   } from "$lib/previewTime";
   import { cloneProject, projectDuration } from "$lib/project";
@@ -18,6 +20,7 @@
   import {
     app,
     commitProjectEdit,
+    playBounds,
     previewProject,
     project,
     replaceClip,
@@ -34,8 +37,13 @@
   const CLIP_SCALE_MAX = 8;
   /** Near end of trimmed source — treat as clip finished. */
   const CLIP_END_EPS = 1 / 30;
-  /** Start warming the next clip this many seconds before the cut. */
-  const PREFETCH_LEAD = 0.85;
+  /** Start warming the next clip this many seconds before the cut (earlier = fewer black cuts). */
+  const PREFETCH_LEAD = 1.5;
+  /**
+   * Seek standby this far before sourceIn and start muted play into the cut so the
+   * first frame is already decoded (keyframe-stall trade-off).
+   */
+  const PREFETCH_PREROLL = 0.12;
 
   type Slot = {
     el: HTMLVideoElement | undefined;
@@ -166,10 +174,16 @@
    * Require only metadata for them; video still needs a decodable frame.
    */
   function mediaReady(el: HTMLVideoElement, clip: Clip): boolean {
+    if (el.seeking) return false;
     if (isAudioOnlyClip(clip)) {
       return el.readyState >= HTMLMediaElement.HAVE_METADATA;
     }
-    return el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && el.videoWidth > 0;
+    // Require a decodable frame (not metadata-only) so swap paints immediately.
+    return (
+      el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      el.videoWidth > 0 &&
+      el.videoHeight > 0
+    );
   }
 
   /** Unmute + play the active slot when preview/clip mute allow it. */
@@ -495,14 +509,15 @@
   }
 
   /**
-   * Prepare a slot for a clip at a source time. Standby stays paused+muted.
+   * Prepare a slot for a clip at a source time.
+   * Standby uses preroll seek (slightly before sourceIn) when `preroll` is set.
    * `valid()` must stay true across awaits (gen tokens).
    */
   async function prepareSlot(
     slot: Slot,
     clip: Clip,
     sourceT: number,
-    opts: { play: boolean; valid: () => boolean },
+    opts: { play: boolean; valid: () => boolean; preroll?: boolean },
   ): Promise<boolean> {
     if (!slot.el) return false;
     slot.clipId = clip.id;
@@ -511,7 +526,9 @@
     const ok = await loadPath(slot, clip.sourcePath);
     if (!ok || !opts.valid()) return false;
 
-    const st = clampSourceSeek(clip, sourceT, CLIP_END_EPS);
+    const st = opts.preroll
+      ? clampSourceSeekPreroll(clip, PREFETCH_PREROLL, CLIP_END_EPS)
+      : clampSourceSeek(clip, sourceT, CLIP_END_EPS);
     await seekSlot(slot, st, clip, true);
     if (!opts.valid() || slot.clipId !== clip.id) return false;
 
@@ -578,13 +595,18 @@
     });
   }
 
-  /** Warm standby with the upcoming clip at its sourceIn. */
+  /** Warm standby with the upcoming clip (preroll seek before sourceIn). */
   function schedulePrefetch(fromClip: Clip) {
     const proj = previewProject();
-    // With loop on, the sequence's first clip follows the last one — warm it like any cut.
-    const next =
-      nextClipAfter(proj, fromClip, app.metaByPath) ??
-      (app.loopPlayback ? firstClipInSequence(proj, app.metaByPath) : null);
+    const { start: playStart, end: playEnd } = playBounds();
+    // Prefer next video still inside the play range; with loop, wrap to play-in clip.
+    let next = nextClipAfter(proj, fromClip, app.metaByPath);
+    if (next && next.timelineStart >= playEnd - 1e-6) next = null;
+    if (!next && app.loopPlayback) {
+      next =
+        videoClipAtTime(proj, playStart, app.metaByPath)?.clip ??
+        firstClipInSequence(proj, app.metaByPath);
+    }
     if (!next) {
       prefetchClipId = null;
       return;
@@ -597,6 +619,7 @@
     const stand = standbySlot();
     void prepareSlot(stand, next, next.sourceIn, {
       play: false,
+      preroll: true,
       valid: () => gen === prefetchGen && app.playing,
     }).then((ok) => {
       if (!ok || gen !== prefetchGen) return;
@@ -605,9 +628,39 @@
     });
   }
 
+  /**
+   * When near the cut, start muted free-run on standby so it rolls into sourceIn
+   * with a decoded frame ready for swap.
+   */
+  function maybePrerollStandby(fromClip: Clip, videoTime: number) {
+    if (!shouldPrerollStandby(fromClip.sourceOut, videoTime, PREFETCH_PREROLL)) return;
+    const stand = standbySlot();
+    if (!stand.el || !stand.ready || stand.clipId == null) return;
+    if (stand.el.seeking) return;
+    // Keep muted; do not steal the audio clock from the active clip.
+    stand.el.muted = true;
+    if (stand.el.paused) void stand.el.play().catch(() => {});
+  }
+
   function swapToStandby(nextClip: Clip): boolean {
     const stand = standbySlot();
     if (stand.clipId !== nextClip.id || !stand.ready || !stand.el) return false;
+    // Need a real frame for video swaps (metadata-only still flashes black).
+    if (!mediaReady(stand.el, nextClip)) {
+      stand.ready = false;
+      return false;
+    }
+
+    // Only seamless-swap when we actually need the clip's sourceIn (hard cut).
+    // Mid-clip play-in / scrub targets must go through seek, not preroll sourceIn.
+    const needSt = clampSourceSeek(
+      nextClip,
+      sourceTimeAt(nextClip, app.playhead),
+      CLIP_END_EPS,
+    );
+    if (Math.abs(needSt - nextClip.sourceIn) > 0.06) {
+      return false;
+    }
 
     const prev = activeSlot();
     prev.el?.pause();
@@ -618,11 +671,21 @@
 
     const active = activeSlot();
     if (active.el) {
-      // Already seeked to sourceIn from prefetch — play immediately
+      // Preroll may leave us slightly before sourceIn — snap to sourceIn then play.
+      if (Math.abs(active.el.currentTime - needSt) > 0.04) {
+        try {
+          active.el.currentTime = needSt;
+        } catch {
+          /* ignore */
+        }
+      }
       playSlotAudio(active.el, nextClip);
     }
     applyAudioState();
-    paint();
+    // Paint immediately from the new active (or keep prior holdFrame if paint fails).
+    if (!paintFrom(active, nextClip)) {
+      paint();
+    }
 
     schedulePrefetch(nextClip);
     return true;
@@ -632,8 +695,11 @@
     bindSlots();
     if (!app.playing) return;
 
-    // Prefer prefetched standby (seamless cut)
-    if (swapToStandby(clip)) return;
+    // Always seek to the playhead's source time (respects play-in mid-clip).
+    const st = clampSourceSeek(clip, sourceTimeAt(clip, app.playhead), CLIP_END_EPS);
+
+    // Prefer prefetched standby only for true hard cuts at sourceIn.
+    if (Math.abs(st - clip.sourceIn) <= 0.06 && swapToStandby(clip)) return;
 
     // Same-file continuation on active: seek without reload
     const active = activeSlot();
@@ -644,7 +710,6 @@
     ) {
       playingClipId = clip.id;
       active.clipId = clip.id;
-      const st = clampSourceSeek(clip, sourceTimeAt(clip, app.playhead), CLIP_END_EPS);
       await seekSlot(active, st, clip, true);
       if (!app.playing || gen !== syncGen) {
         if (playingClipId === clip.id) playingClipId = null;
@@ -660,7 +725,6 @@
 
     // Cold start on active (first clip / cache miss)
     playingClipId = clip.id;
-    const st = clampSourceSeek(clip, sourceTimeAt(clip, app.playhead), CLIP_END_EPS);
     const ok = await prepareSlot(active, clip, st, {
       play: true,
       valid: () => gen === syncGen && app.playing,
@@ -671,6 +735,14 @@
     }
     paint();
     schedulePrefetch(clip);
+  }
+
+  /** Pause all decoders (video slots + bed). */
+  function pauseAllMedia() {
+    for (const s of slots) {
+      s.el?.pause();
+    }
+    bedAudioEl?.pause();
   }
 
   function stopRaf() {
@@ -688,36 +760,42 @@
     playingClipId = null;
     prefetchClipId = null;
     wrapGraceUntilMs = 0;
-    for (const s of slots) {
-      s.el?.pause();
-    }
-    bedAudioEl?.pause();
+    pauseAllMedia();
     applyAudioState();
     paint();
     stopRaf();
   }
 
   /**
-   * Loop wrap: restart at 0. Prefer the prefetched standby so the loop point behaves
-   * like any other hard cut; otherwise fall back to a cold start on the next tick.
+   * Loop / restart at play-in: pin playhead, pause media, then seek-start from
+   * sourceTimeAt(play-in) — never from clip sourceIn alone.
    */
-  function wrapToStart() {
-    // Ignore end-of-clip detection briefly — decoder may still report old currentTime.
-    wrapGraceUntilMs = performance.now() + 180;
-    setPlayhead(0);
-    void syncBedAudio(0, true);
-    const hit = videoClipAtTime(previewProject(), 0, app.metaByPath);
-    if (hit && swapToStandby(hit.clip)) {
-      paint();
-      return;
-    }
+  function wrapToPlayIn() {
+    wrapGraceUntilMs = performance.now() + 280;
+    const { start } = playBounds();
+    setPlayhead(start);
+    void syncBedAudio(start, true);
 
     playingClipId = null;
+    prefetchClipId = null;
+    prefetchGen++;
+    pauseAllMedia();
     for (const s of slots) {
-      s.el?.pause();
+      if (s.el) s.el.muted = true;
+    }
+
+    const hit = videoClipAtTime(previewProject(), start, app.metaByPath);
+    if (hit) {
+      const gen = ++syncGen;
+      void startClipPlayback(hit.clip, gen);
     }
     applyAudioState();
     paint();
+  }
+
+  /** True when free-run timeline time has reached play-out. */
+  function hitPlayOut(timelineT: number, playEnd: number): boolean {
+    return timelineT >= playEnd - 1e-6;
   }
 
   function tick(now: number) {
@@ -738,11 +816,27 @@
       stopPlayback(0, "Paused");
       return;
     }
+    const { start: playStart, end: playEnd } = playBounds();
 
     let t = app.playhead;
+    const inWrapGrace = now < wrapGraceUntilMs;
+
+    // Outside play range (not during wrap settle): loop → play-in, else hard stop.
+    if (!inWrapGrace && (t < playStart - 1e-6 || hitPlayOut(t, playEnd))) {
+      if (app.loopPlayback || t < playStart - 1e-6) {
+        wrapToPlayIn();
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      stopPlayback(playEnd, "Paused");
+      return;
+    }
+    if (inWrapGrace) {
+      t = playStart;
+    }
+
     const hit = videoClipAtTime(proj, t, app.metaByPath);
     const active = activeSlot();
-    const inWrapGrace = now < wrapGraceUntilMs;
 
     // Free-run underlay (no per-frame async reload/seek thrash).
     maintainBedAudio(t);
@@ -751,79 +845,143 @@
       const clip = hit.clip;
       const end = clipTimelineEnd(clip);
       const mediaLive = active.el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+      const playInSrc = clampSourceSeek(clip, sourceTimeAt(clip, playStart), CLIP_END_EPS);
+      // Source time that corresponds to play-out (may be mid-clip).
+      const playOutSrc = clampSourceSeek(
+        clip,
+        sourceTimeAt(clip, Math.min(playEnd, end) - 1e-4),
+        CLIP_END_EPS,
+      );
 
       if (playingClipId !== clip.id) {
         const gen = ++syncGen;
         void startClipPlayback(clip, gen);
         paint();
+      } else if (inWrapGrace) {
+        // Only pin to play-in during loop wrap settle — not on ordinary cut seeks.
+        t = playStart;
+        if (!active.el.seeking && Math.abs(active.el.currentTime - playInSrc) > 0.05) {
+          active.el.pause();
+          try {
+            active.el.currentTime = playInSrc;
+          } catch {
+            /* ignore */
+          }
+        } else if (!active.el.seeking && Math.abs(active.el.currentTime - playInSrc) <= 0.05) {
+          wrapGraceUntilMs = 0;
+          playSlotAudio(active.el, clip);
+        }
+        paint();
       } else if (active.el.seeking) {
-        paint(); // hold frame
+        // Hard-cut / scrub seek: keep timeline where we already set it (don't jump to I).
+        paint();
       } else if (mediaLive) {
         const vidT = active.el.currentTime;
-        // During wrap grace, never treat as past out (avoids loop oscillation).
-        const pastOut =
-          !inWrapGrace && (vidT >= clip.sourceOut - CLIP_END_EPS || active.el.ended);
+        // Source time at this clip's exclusive timeline end (true clip past-out).
+        const clipEndSrc = clampSourceSeek(clip, clip.sourceOut - CLIP_END_EPS, CLIP_END_EPS);
+        // Play-out only if the range ends inside this clip (not at every clip boundary).
+        const rangeEndsInThisClip = playEnd <= end + 1e-6;
+        const pastPlayOut =
+          rangeEndsInThisClip && vidT >= playOutSrc - CLIP_END_EPS;
+        const pastClipEnd = vidT >= clipEndSrc - 1e-4 || active.el.ended;
 
-        if (pastOut) {
-          t = end;
+        // Before play-in in source space (only when play-in lies inside this clip).
+        if (playStart >= clip.timelineStart - 1e-9 && playStart < end && vidT < playInSrc - 0.04) {
+          t = playStart;
           active.el.pause();
-          const next = nextClipAfter(proj, clip, app.metaByPath);
-          playingClipId = null;
-          if (next && swapToStandby(next)) {
-            t = next.timelineStart;
+          try {
+            active.el.currentTime = playInSrc;
+          } catch {
+            /* ignore */
           }
+          paint();
+        } else if (pastPlayOut) {
+          // Hit play-out inside this clip — stop/loop (do not jump to next clip).
+          pauseAllMedia();
+          t = playEnd;
+          playingClipId = null;
+          paint();
+        } else if (pastClipEnd) {
+          // Natural hard cut to the next video (if still inside the play range).
+          pauseAllMedia();
+          let next = nextClipAfter(proj, clip, app.metaByPath);
+          if (next && next.timelineStart >= playEnd - 1e-6) next = null;
+          playingClipId = null;
+
+          if (next && next.timelineStart < playEnd - 1e-6) {
+            t = Math.min(Math.max(next.timelineStart, playStart), playEnd);
+            // Seek uses app.playhead — update before starting the next clip.
+            setPlayhead(t);
+            if (!swapToStandby(next)) {
+              const gen = ++syncGen;
+              void startClipPlayback(next, gen);
+            }
+          } else {
+            t = playEnd;
+          }
+          paint();
         } else {
           if (active.el.paused) {
             applyAudioState();
             playSlotAudio(active.el, clip);
           }
-          // Prefer free-run clock; during wrap grace clamp to clip range so we
-          // don't snap to sequence end from a stale decoder timestamp.
-          let mapped = clip.timelineStart + Math.max(0, active.el.currentTime - clip.sourceIn);
-          if (inWrapGrace) {
-            mapped = Math.min(mapped, end - 1e-4);
-            mapped = Math.max(mapped, clip.timelineStart);
+          let mapped = clip.timelineStart + Math.max(0, vidT - clip.sourceIn);
+          if (hitPlayOut(mapped, playEnd)) {
+            pauseAllMedia();
+            t = playEnd;
+          } else {
+            // Don't pull the head back to play-in once we're past it.
+            t = mapped < playStart ? playStart : mapped;
+            if (shouldPrefetchNearCut(clip.sourceOut, vidT, PREFETCH_LEAD)) {
+              schedulePrefetch(clip);
+            }
+            maybePrerollStandby(clip, vidT);
           }
-          t = mapped;
-          if (shouldPrefetchNearCut(clip.sourceOut, vidT, PREFETCH_LEAD)) {
-            schedulePrefetch(clip);
-          }
+          paint();
         }
-        paint();
       } else {
+        // Still loading — hold last good frame (do not clear holdFrame).
         paint();
       }
     } else {
-      // Black gap or audio-bed-only — advance by wall clock.
+      // Black gap or audio-bed-only — advance by wall clock, clamp to play range.
       playingClipId = null;
       active.el?.pause();
       t = t + wallDt;
-      holdFrame = false;
-      paint();
-      const upcoming = videoClipAtTime(proj, t + 0.01, app.metaByPath);
-      if (upcoming && standbySlot().clipId !== upcoming.clip.id) {
-        const gen = ++prefetchGen;
-        prefetchClipId = upcoming.clip.id;
-        void prepareSlot(standbySlot(), upcoming.clip, upcoming.clip.sourceIn, {
-          play: false,
-          valid: () => gen === prefetchGen && app.playing,
-        });
+      if (hitPlayOut(t, playEnd)) {
+        pauseAllMedia();
+        t = playEnd;
+      }
+      // Real gap: clear held frame only when nothing video is resolving at t.
+      const stillVideo = videoClipAtTime(proj, t, app.metaByPath);
+      if (!stillVideo) {
+        holdFrame = false;
+        paintBlack();
+      } else {
+        paint();
+      }
+      if (!hitPlayOut(t, playEnd)) {
+        const upcoming = videoClipAtTime(proj, t + 0.01, app.metaByPath);
+        if (upcoming && upcoming.clip.timelineStart < playEnd && standbySlot().clipId !== upcoming.clip.id) {
+          const gen = ++prefetchGen;
+          prefetchClipId = upcoming.clip.id;
+          void prepareSlot(standbySlot(), upcoming.clip, upcoming.clip.sourceIn, {
+            play: false,
+            preroll: true,
+            valid: () => gen === prefetchGen && app.playing,
+          });
+        }
       }
     }
 
-    if (t >= totalDur - 1e-6) {
+    // End of play range (or sequence when no range).
+    if (!inWrapGrace && hitPlayOut(t, playEnd)) {
+      pauseAllMedia();
       if (!app.loopPlayback) {
-        stopPlayback(totalDur, "Paused");
+        stopPlayback(playEnd, "Paused");
         return;
       }
-      if (inWrapGrace) {
-        // Stay at start until grace elapses / decoder catches up.
-        t = 0;
-        setPlayhead(0);
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      wrapToStart();
+      wrapToPlayIn();
       rafId = requestAnimationFrame(tick);
       return;
     }

@@ -15,16 +15,19 @@
     canExport,
     canRedo,
     canUndo,
+    clearPlayRange,
     clampTimelineHeight,
     copySelectedClip,
     duration,
     duplicateSelectedClip,
     exportVideo,
+    hasPlayRange,
     importVideos,
     initApp,
     newProject,
     openProject,
     pasteClipboard,
+    playBounds,
     project,
     refreshDeps,
     relinkSelected,
@@ -40,6 +43,8 @@
     selectedClipDurationSecs,
     selectedMeta,
     setCanvasSize,
+    setPlayInAtPlayhead,
+    setPlayOutAtPlayhead,
     setPlayhead,
     setTimelineHeight,
     stepPlayheadFrames,
@@ -67,7 +72,9 @@
       return "Select a clip → Relink… or Reveal in Inspector";
     }
     if (app.playing) {
-      return "Space pause · [ ] cuts · L loop";
+      return hasPlayRange()
+        ? "Space pause · L loop range · I/O set play range"
+        : "Space pause · [ ] cuts · L loop · I/O play range";
     }
     if (nSel > 1) {
       return `${nSel} selected · drag any to move group · Delete all · ⌘C copy · ⌘-click to toggle`;
@@ -93,9 +100,9 @@
 
   function togglePlay() {
     if (!app.playing) {
-      const d = duration();
-      if (d > 0 && app.playhead >= d) {
-        setPlayhead(0);
+      const { start, end } = playBounds();
+      if (end > start && (app.playhead < start || app.playhead >= end)) {
+        setPlayhead(start);
       }
     }
     app.playing = !app.playing;
@@ -104,7 +111,7 @@
 
   function stop() {
     app.playing = false;
-    setPlayhead(0);
+    setPlayhead(playBounds().start);
     app.status = "Stopped";
   }
 
@@ -190,6 +197,21 @@
     if (event.key.toLowerCase() === "l" && !mod) {
       event.preventDefault();
       toggleLoopPlayback();
+      return;
+    }
+    if (event.key.toLowerCase() === "i" && !mod) {
+      event.preventDefault();
+      setPlayInAtPlayhead();
+      return;
+    }
+    if (event.key.toLowerCase() === "o" && !mod) {
+      event.preventDefault();
+      setPlayOutAtPlayhead();
+      return;
+    }
+    if (event.key === "Escape" && hasPlayRange()) {
+      event.preventDefault();
+      clearPlayRange();
       return;
     }
 
@@ -308,6 +330,10 @@
           app.previewMuted = !app.previewMuted;
           app.status = app.previewMuted ? "Preview muted" : "Preview unmuted";
         }}
+        onHome={seekPlayheadHome}
+        onEnd={seekPlayheadEnd}
+        onPrevCut={seekPrevCut}
+        onNextCut={seekNextCut}
       />
     </section>
 

@@ -14,6 +14,8 @@ import {
   snapToFrame,
   evenCanvasDim,
   trimProjectToTime,
+  addMarker,
+  renameMarker,
 } from "./project";
 import type { Clip, Project } from "./types";
 
@@ -217,6 +219,32 @@ describe("evenCanvasDim", () => {
     expect(evenCanvasDim(3)).toBe(2);
     expect(evenCanvasDim(1920)).toBe(1920);
     expect(evenCanvasDim(1921)).toBe(1920);
+  });
+});
+
+describe("renameMarker", () => {
+  it("updates label and trims whitespace", () => {
+    let p = createProject();
+    p = addMarker(p, 1.5, "M1");
+    const id = p.markers![0]!.id;
+    const next = renameMarker(p, id, "  VO start  ");
+    expect(next.markers![0]!.label).toBe("VO start");
+    expect(next).not.toBe(p);
+  });
+
+  it("no-ops when label unchanged or marker missing", () => {
+    let p = createProject();
+    p = addMarker(p, 0, "Beat");
+    const id = p.markers![0]!.id;
+    expect(renameMarker(p, id, "Beat")).toBe(p);
+    expect(renameMarker(p, "missing", "X")).toBe(p);
+  });
+
+  it("falls back to M when empty", () => {
+    let p = createProject();
+    p = addMarker(p, 0, "Temp");
+    const id = p.markers![0]!.id;
+    expect(renameMarker(p, id, "   ").markers![0]!.label).toBe("M");
   });
 });
 

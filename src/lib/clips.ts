@@ -162,6 +162,71 @@ export function moveClip(
  * Positions update first, then each selected clip overwrites non-selected neighbors.
  * Relative spacing among the set is preserved, so they do not overwrite each other.
  */
+/**
+ * Leave originals in place; add a copy of `clipId` at `timelineStart` on `toTrackId`
+ * (or the source track). Copy overwrites neighbors like a normal place.
+ */
+export function duplicateClipTo(
+  project: Project,
+  clipId: string,
+  timelineStart: number,
+  toTrackId?: string,
+): Project {
+  const found = findClip(project, clipId);
+  if (!found) return project;
+  const destId =
+    toTrackId && project.tracks.some((t) => t.id === toTrackId)
+      ? toTrackId
+      : project.tracks[found.trackIndex]!.id;
+  const start = Math.max(0, Number.isFinite(timelineStart) ? timelineStart : 0);
+  const clone: Clip = {
+    ...found.clip,
+    id: newId(),
+    timelineStart: start,
+    transform: { ...found.clip.transform },
+  };
+  return addClip(project, destId, clone);
+}
+
+/**
+ * Leave originals in place; add copies shifted by `deltaT` on the same tracks.
+ * Used for Option/Alt multi-drag duplicate (group keeps relative spacing).
+ */
+export function duplicateClipsByDelta(
+  project: Project,
+  clipIds: string[],
+  deltaT: number,
+): Project {
+  const ids = [...new Set(clipIds)].filter((id) => findClip(project, id));
+  if (ids.length === 0 || !Number.isFinite(deltaT)) return project;
+
+  let minStart = Infinity;
+  for (const id of ids) {
+    minStart = Math.min(minStart, findClip(project, id)!.clip.timelineStart);
+  }
+  const d = Math.max(deltaT, -minStart);
+
+  // Stable place order: lower track first, then timeline — matches group move overwrite.
+  const ordered = ids
+    .map((id) => {
+      const f = findClip(project, id)!;
+      return { id, ti: f.trackIndex, trackId: project.tracks[f.trackIndex]!.id, clip: f.clip };
+    })
+    .sort((a, b) => a.ti - b.ti || a.clip.timelineStart - b.clip.timelineStart);
+
+  let next = project;
+  for (const { trackId, clip } of ordered) {
+    const clone: Clip = {
+      ...clip,
+      id: newId(),
+      timelineStart: clip.timelineStart + d,
+      transform: { ...clip.transform },
+    };
+    next = addClip(next, trackId, clone);
+  }
+  return next;
+}
+
 export function moveClipsByDelta(
   project: Project,
   clipIds: string[],
