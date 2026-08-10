@@ -60,6 +60,12 @@ brew install ffmpeg
 
 Also: [Rust toolchain](https://rustup.rs/) and [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) if packaging.
 
+## Download
+
+macOS builds (Apple Silicon + Intel) are published on the
+[Releases](https://github.com/meigo/slop-video-compositor/releases) page when a `v*` tag is pushed.
+Install ffmpeg separately (`brew install ffmpeg`). First launch: right-click → Open if Gatekeeper blocks the unsigned app.
+
 ## Development
 
 ```bash
