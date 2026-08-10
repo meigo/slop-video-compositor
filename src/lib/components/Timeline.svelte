@@ -32,8 +32,9 @@
     clearFilmstripErrors,
     clearFilmstripMemoryCache,
     ensureFilmstrip,
-    getFilmstrip,
     getFilmstripLastError,
+    getFilmstripLoadingCount,
+    peekFilmstrip,
     subscribeFilmstrips,
   } from "$lib/filmstripCache";
   import type { FilmstripReady } from "$lib/filmstripCache";
@@ -41,8 +42,9 @@
     clearWaveformErrors,
     clearWaveformMemoryCache,
     ensureWaveform,
-    getWaveform,
     getWaveformLastError,
+    getWaveformLoadingCount,
+    peekWaveform,
     subscribeWaveforms,
   } from "$lib/waveformCache";
   import type { WaveformReady } from "$lib/waveformCache";
@@ -150,7 +152,8 @@
   /** Bound to the length number field (seconds). */
   let durationInput = $state(10);
 
-  const p = $derived(project());
+  // Read present directly so Svelte tracks history replacement after import/commit.
+  const p = $derived(app.history.present);
   const seqDuration = $derived(projectDuration(p));
   const contentEnd = $derived(contentDuration(p));
   /** Handle / field / width while resizing use the live preview time. */
@@ -723,21 +726,35 @@
   const rangeActive = $derived(hasPlayRange());
   const bounds = $derived(playBounds());
 
+  function updateThumbsStatus() {
+    if (!app.showFilmstrips) return;
+    const n = getFilmstripLoadingCount() + getWaveformLoadingCount();
+    if (n > 0) {
+      app.status = n === 1 ? "Generating thumbs…" : `Generating thumbs… (${n})`;
+      return;
+    }
+    const err = getFilmstripLastError() ?? getWaveformLastError();
+    if (err) {
+      app.status = `Thumbs: ${err}`;
+      return;
+    }
+    if (
+      app.status.startsWith("Generating thumbs") ||
+      app.status.startsWith("Thumbs:")
+    ) {
+      app.status = "Thumbs ready";
+    }
+  }
+
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
     const unsubStrip = subscribeFilmstrips(() => {
       filmstripTick++;
-      const err = getFilmstripLastError();
-      if (err && app.showFilmstrips) {
-        app.status = `Filmstrip: ${err}`;
-      }
+      updateThumbsStatus();
     });
     const unsubWave = subscribeWaveforms(() => {
       waveformTick++;
-      const err = getWaveformLastError();
-      if (err && app.showFilmstrips) {
-        app.status = `Waveform: ${err}`;
-      }
+      updateThumbsStatus();
     });
     return () => {
       unsubStrip();
@@ -752,7 +769,7 @@
     endDurationResize();
   });
 
-  // Full-media filmstrips / waveforms per source+height (not per trim / zoom).
+  // Kick off full-media filmstrips / waveforms outside of render (safe side effects).
   $effect(() => {
     if (!app.showFilmstrips) return;
     void p;
@@ -767,14 +784,17 @@
     }
   });
 
+  /** Render-only peek — never starts ffmpeg (that would mutate state mid-paint). */
   function filmstripForClip(
     clip: (typeof p.tracks)[0]["clips"][0],
   ): FilmstripReady | null {
     void filmstripTick;
     if (!app.showFilmstrips) return null;
-    const meta = app.metaByPath.get(clip.sourcePath);
-    const key = ensureFilmstrip(clip, meta, FILMSTRIP_H);
-    return key ? getFilmstrip(key) : null;
+    return peekFilmstrip(
+      clip,
+      app.metaByPath.get(clip.sourcePath),
+      FILMSTRIP_H,
+    );
   }
 
   function waveformForClip(
@@ -782,9 +802,11 @@
   ): WaveformReady | null {
     void waveformTick;
     if (!app.showFilmstrips) return null;
-    const meta = app.metaByPath.get(clip.sourcePath);
-    const key = ensureWaveform(clip, meta, FILMSTRIP_H);
-    return key ? getWaveform(key) : null;
+    return peekWaveform(
+      clip,
+      app.metaByPath.get(clip.sourcePath),
+      FILMSTRIP_H,
+    );
   }
 
   function onToggleFilmstrips() {

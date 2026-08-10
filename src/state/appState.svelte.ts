@@ -115,9 +115,9 @@ export const app = $state({
    */
   playIn: null as number | null,
   playOut: null as number | null,
-  /** Preview-only: show filmstrip thumbnails on video clips (session; default on). */
+  /** Show filmstrip/waveform thumbs on clips (persisted in settings; default on). */
   showFilmstrips: true,
-  /** Timeline track row height preset (session). */
+  /** Timeline track row height preset (persisted in settings). */
   trackRowSize: DEFAULT_TRACK_ROW_SIZE as TrackRowSize,
   checkingDeps: true,
   lastProjectDir: null as string | null,
@@ -681,6 +681,7 @@ export function hasPlayRange(): boolean {
 export function toggleFilmstrips() {
   app.showFilmstrips = !app.showFilmstrips;
   app.status = app.showFilmstrips ? "Filmstrips on" : "Filmstrips off";
+  void persistSettings();
 }
 
 export function setTrackRowSize(size: TrackRowSize) {
@@ -689,6 +690,7 @@ export function setTrackRowSize(size: TrackRowSize) {
   app.trackRowSize = size;
   const label = size === "s" ? "compact" : size === "l" ? "tall" : "default";
   app.status = `Track height: ${label}`;
+  void persistSettings();
 }
 
 /**
@@ -1074,6 +1076,8 @@ async function persistSettings() {
       last_export_dir: app.lastExportDir,
       last_project_dir: app.lastProjectDir,
       timeline_height_px: Math.round(app.timelineHeightPx),
+      show_filmstrips: app.showFilmstrips,
+      track_row_size: app.trackRowSize,
     };
     await saveSettings(settings);
   } catch {
@@ -1108,6 +1112,12 @@ export async function initApp() {
       settings.timeline_height_px > 0
     ) {
       app.timelineHeightPx = clampTimelineHeight(settings.timeline_height_px);
+    }
+    if (typeof settings.show_filmstrips === "boolean") {
+      app.showFilmstrips = settings.show_filmstrips;
+    }
+    if (isTrackRowSize(settings.track_row_size)) {
+      app.trackRowSize = settings.track_row_size;
     }
   } catch {
     // defaults

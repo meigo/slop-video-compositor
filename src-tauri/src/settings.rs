@@ -11,6 +11,12 @@ pub struct AppSettings {
     /// Timeline panel height in CSS pixels (UI preference).
     #[serde(default)]
     pub timeline_height_px: Option<u32>,
+    /// Show filmstrips / waveforms on timeline clips.
+    #[serde(default)]
+    pub show_filmstrips: Option<bool>,
+    /// Track row height preset: "s" | "m" | "l".
+    #[serde(default)]
+    pub track_row_size: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -19,6 +25,8 @@ impl Default for AppSettings {
             last_export_dir: None,
             last_project_dir: None,
             timeline_height_px: None,
+            show_filmstrips: None,
+            track_row_size: None,
         }
     }
 }

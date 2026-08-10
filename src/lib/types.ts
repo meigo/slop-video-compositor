@@ -56,6 +56,10 @@ export type AppSettings = {
   last_project_dir: string | null;
   /** Timeline panel height in CSS pixels (optional; UI preference). */
   timeline_height_px?: number | null;
+  /** Show filmstrips / waveforms on timeline clips. */
+  show_filmstrips?: boolean | null;
+  /** Track row height preset: "s" | "m" | "l". */
+  track_row_size?: string | null;
 };
 
 /** Wire shape from Rust `probe_media` (no path; caller attaches it). */

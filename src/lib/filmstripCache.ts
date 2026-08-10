@@ -2,6 +2,9 @@
  * Session filmstrip data-URL cache + in-flight dedupe.
  * One dense sheet per source media + track height (not per trim / zoom).
  * Trim only remaps which tiles are shown in CSS.
+ *
+ * Important: never notify listeners synchronously from a render path — that
+ * mutates Timeline state mid-paint and can drop the whole clip update.
  */
 
 import { isAudioOnlyMeta } from "./tauri";
@@ -17,13 +20,9 @@ import type { Clip, SourceMeta } from "./types";
 
 export type FilmstripReady = {
   url: string;
-  /** Actual tiles in the sheet (layout must use this, not the request count). */
   count: number;
-  /** Native JPEG width — locks CSS aspect so zoom cannot anamorphically stretch. */
   width: number;
-  /** Native JPEG height. */
   height: number;
-  /** Media duration the sheet spans (for trim → tile mapping). */
   mediaDuration: number;
 };
 
@@ -39,17 +38,26 @@ type Entry =
     }
   | { status: "error"; message: string };
 
-/** Max ready strips kept in memory (data URLs). Disk cache is separate. */
 export const FILMSTRIP_MEMORY_LRU = 48;
 
 const cache = new Map<string, Entry>();
-/** Insertion/access order for LRU (oldest at front). */
 const lruKeys: string[] = [];
 const listeners = new Set<() => void>();
 let lastError: string | null = null;
+let loadingCount = 0;
+let notifyScheduled = false;
 
-function notify() {
-  for (const l of listeners) l();
+function scheduleNotify() {
+  if (notifyScheduled) return;
+  notifyScheduled = true;
+  queueMicrotask(() => {
+    notifyScheduled = false;
+    for (const l of listeners) l();
+  });
+}
+
+export function getFilmstripLoadingCount(): number {
+  return loadingCount;
 }
 
 function touchLru(key: string) {
@@ -63,24 +71,35 @@ function evictLruIfNeeded() {
     const old = lruKeys.shift();
     if (!old) break;
     const e = cache.get(old);
-    if (e?.status === "ready") {
+    if (e?.status === "ready" || e?.status === "error") {
       cache.delete(old);
     }
-    if (e?.status === "error") cache.delete(old);
   }
 }
 
-/** Subscribe to cache updates (Timeline re-renders filmstrips). */
 export function subscribeFilmstrips(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
 
-export function getFilmstripUrl(key: string): string | null {
-  return getFilmstrip(key)?.url ?? null;
+/** Stable cache key, or null if this clip should not have a filmstrip. */
+export function filmstripKeyFor(
+  clip: Clip,
+  meta: SourceMeta | undefined,
+  stripHeightPx: number,
+): string | null {
+  if (!meta || isAudioOnlyMeta(meta)) return null;
+  const mediaDur = meta.duration;
+  if (!(mediaDur > 0) || !Number.isFinite(mediaDur)) return null;
+  if (!(clip.sourceOut > clip.sourceIn)) return null;
+
+  const count = filmstripDensityCount(mediaDur);
+  const height = Math.max(16, Math.min(128, Math.round(stripHeightPx || 32)));
+  const aspect = filmstripSourceAspect(meta.width, meta.height);
+  const tileW = filmstripTileWidthPx(height, aspect);
+  return filmstripCacheKey(clip.sourcePath, count, height, tileW);
 }
 
-/** Ready strip + native geometry (for equal-cell CSS layout without stretch). */
 export function getFilmstrip(key: string): FilmstripReady | null {
   const e = cache.get(key);
   if (e?.status === "ready") {
@@ -96,11 +115,20 @@ export function getFilmstrip(key: string): FilmstripReady | null {
   return null;
 }
 
+/** Peek without starting work (safe in template / render). */
+export function peekFilmstrip(
+  clip: Clip,
+  meta: SourceMeta | undefined,
+  stripHeightPx: number,
+): FilmstripReady | null {
+  const key = filmstripKeyFor(clip, meta, stripHeightPx);
+  return key ? getFilmstrip(key) : null;
+}
+
 export function getFilmstripLastError(): string | null {
   return lastError;
 }
 
-/** Drop error entries so the next ensure can retry. */
 export function clearFilmstripErrors() {
   for (const [k, v] of cache) {
     if (v.status === "error") {
@@ -112,16 +140,16 @@ export function clearFilmstripErrors() {
   lastError = null;
 }
 
-/** Drop all in-memory strips. */
 export function clearFilmstripMemoryCache() {
   cache.clear();
   lruKeys.length = 0;
   lastError = null;
-  notify();
+  loadingCount = 0;
+  scheduleNotify();
 }
 
 /**
- * Ensure a full-media filmstrip exists for this source (trim-independent).
+ * Ensure a full-media filmstrip exists (async). Call from $effect, not from render.
  * Returns cache key, or null if not applicable.
  */
 export function ensureFilmstrip(
@@ -129,19 +157,9 @@ export function ensureFilmstrip(
   meta: SourceMeta | undefined,
   stripHeightPx: number,
 ): string | null {
-  if (!meta || isAudioOnlyMeta(meta)) return null;
-  const mediaDur = meta.duration;
-  if (!(mediaDur > 0) || !Number.isFinite(mediaDur)) return null;
-  // Still require a positive used range so empty/broken clips skip work.
-  if (!(clip.sourceOut > clip.sourceIn)) return null;
+  const key = filmstripKeyFor(clip, meta, stripHeightPx);
+  if (!key || !meta) return null;
 
-  const count = filmstripDensityCount(mediaDur);
-  const height = Math.max(16, Math.min(128, Math.round(stripHeightPx || 32)));
-  const aspect = filmstripSourceAspect(meta.width, meta.height);
-  const tileW = filmstripTileWidthPx(height, aspect);
-  const targetWidth = filmstripNativeWidth(count, height, aspect);
-
-  const key = filmstripCacheKey(clip.sourcePath, count, height, tileW);
   const existing = cache.get(key);
   if (existing?.status === "ready") {
     touchLru(key);
@@ -150,7 +168,21 @@ export function ensureFilmstrip(
   if (existing?.status === "loading") return key;
   if (existing?.status === "error") cache.delete(key);
 
-  const promise = generateFilmstrip({
+  const mediaDur = meta.duration;
+  const count = filmstripDensityCount(mediaDur);
+  const height = Math.max(16, Math.min(128, Math.round(stripHeightPx || 32)));
+  const aspect = filmstripSourceAspect(meta.width, meta.height);
+  const targetWidth = filmstripNativeWidth(count, height, aspect);
+
+  let resolveReady!: (v: FilmstripReady | null) => void;
+  const promise = new Promise<FilmstripReady | null>((resolve) => {
+    resolveReady = resolve;
+  });
+  cache.set(key, { status: "loading", promise });
+  loadingCount++;
+  scheduleNotify();
+
+  void generateFilmstrip({
     path: clip.sourcePath,
     source_start: 0,
     duration: mediaDur,
@@ -169,28 +201,35 @@ export function ensureFilmstrip(
         height: Math.max(1, Math.round(res.height || height)),
         mediaDuration: mediaDur,
       };
-      cache.set(key, {
-        status: "ready",
-        url: ready.url,
-        count: ready.count,
-        width: ready.width,
-        height: ready.height,
-        mediaDuration: ready.mediaDuration,
-      });
-      touchLru(key);
-      evictLruIfNeeded();
-      lastError = null;
-      notify();
-      return ready;
+      const cur = cache.get(key);
+      if (cur?.status === "loading" && cur.promise === promise) {
+        cache.set(key, {
+          status: "ready",
+          url: ready.url,
+          count: ready.count,
+          width: ready.width,
+          height: ready.height,
+          mediaDuration: ready.mediaDuration,
+        });
+        touchLru(key);
+        evictLruIfNeeded();
+        lastError = null;
+      }
+      resolveReady(ready);
     })
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      cache.set(key, { status: "error", message });
-      lastError = message;
-      notify();
-      return null;
+      const cur = cache.get(key);
+      if (cur?.status === "loading" && cur.promise === promise) {
+        cache.set(key, { status: "error", message });
+        lastError = message;
+      }
+      resolveReady(null);
+    })
+    .finally(() => {
+      loadingCount = Math.max(0, loadingCount - 1);
+      scheduleNotify();
     });
 
-  cache.set(key, { status: "loading", promise });
   return key;
 }

@@ -38,12 +38,12 @@
   /** Near end of trimmed source — treat as clip finished. */
   const CLIP_END_EPS = 1 / 30;
   /** Start warming the next clip this many seconds before the cut (earlier = fewer black cuts). */
-  const PREFETCH_LEAD = 1.5;
+  const PREFETCH_LEAD = 2.25;
   /**
    * Seek standby this far before sourceIn and start muted play into the cut so the
    * first frame is already decoded (keyframe-stall trade-off).
    */
-  const PREFETCH_PREROLL = 0.12;
+  const PREFETCH_PREROLL = 0.2;
 
   type Slot = {
     el: HTMLVideoElement | undefined;
@@ -723,7 +723,8 @@
       return;
     }
 
-    // Cold start on active (first clip / cache miss)
+    // Cold start on active (first clip / cache miss) — hold prior frame until ready.
+    holdFrame = true;
     playingClipId = clip.id;
     const ok = await prepareSlot(active, clip, st, {
       play: true,
@@ -913,12 +914,15 @@
             // Seek uses app.playhead — update before starting the next clip.
             setPlayhead(t);
             if (!swapToStandby(next)) {
+              // Keep last painted frame while the cold path seeks (no black flash).
+              holdFrame = true;
               const gen = ++syncGen;
               void startClipPlayback(next, gen);
             }
           } else {
             t = playEnd;
           }
+          // Prefer holdFrame over black while the next clip is still opening.
           paint();
         } else {
           if (active.el.paused) {
