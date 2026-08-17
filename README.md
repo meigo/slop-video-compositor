@@ -5,7 +5,7 @@
 
 Desktop multi-shot **hard-cut** video compositor: load local video and audio onto tracks, trim/cut/reorder, reframe on a fixed canvas, export one **H.264 + AAC MP4**.
 
-![Slop Video Compositor — preview, inspector, multi-track timeline with filmstrips and markers](docs/screenshot.png)
+![Slop Video Compositor — preview, inspector, multi-track timeline with filmstrips and markers](docs/screenshot.webp)
 
 **Stack:** Tauri 2 + SvelteKit + TypeScript, with **ffmpeg** on your `PATH` (not bundled).
 
