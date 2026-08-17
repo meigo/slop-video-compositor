@@ -56,16 +56,22 @@ Desktop multi-shot **hard-cut** video compositor: load local video and audio ont
 ```bash
 # macOS (Homebrew)
 brew install ffmpeg
+
+# Windows (winget)
+winget install Gyan.FFmpeg
 ```
 
 Also: [Rust toolchain](https://rustup.rs/) and [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) if packaging.
 
 ## Download
 
-macOS builds (Apple Silicon + Intel) are on the
+macOS (Apple Silicon + Intel) and Windows (x64) builds are on the
 [Releases](https://github.com/meigo/slop-video-compositor/releases) page. Pushing a `v*` tag builds
-both DMGs into a draft release, which a maintainer then publishes.
-Install ffmpeg separately (`brew install ffmpeg`). First launch: right-click → Open if Gatekeeper blocks the unsigned app.
+them into a draft release, which a maintainer then publishes.
+
+Install ffmpeg separately — see [Requirements](#requirements). Neither build is signed:
+on macOS right-click → Open if Gatekeeper blocks it, on Windows choose **More info → Run anyway** if
+SmartScreen warns.
 
 ## Development
 

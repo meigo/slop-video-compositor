@@ -4,12 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  # Build-only smoke test: no tag, no release, nothing uploaded.
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   create-release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.create.outputs.result }}
@@ -36,6 +39,8 @@ jobs:
           RELEASE_BODY: |
             ### Which download do I need?
 
+            **macOS**
+
             - **`_aarch64.dmg`** — Macs with an Apple chip (M1/M2/M3/M4, from 2020 onwards)
             - **`_x64.dmg`** — older Macs with an Intel processor
 
@@ -43,16 +48,27 @@ jobs:
             "Processor: Intel…" means Intel. The `.app.tar.gz` files are the same apps
             without an installer — most users want the `.dmg`.
 
+            **Windows** (64-bit)
+
+            - **`_x64-setup.exe`** — the installer most people want
+            - **`_x64_en-US.msi`** — the same app, for managed or scripted installs
+
             ### Requirements
 
-            Requires **ffmpeg** on your PATH (`brew install ffmpeg`).
+            Requires **ffmpeg** on your PATH:
+
+            - macOS — `brew install ffmpeg`
+            - Windows — `winget install Gyan.FFmpeg`
 
             Used for probe, filmstrip/waveform generation, and export.
 
             ### First launch
 
-            The app is not notarized: right-click the app and choose Open,
+            **macOS** — the app is not notarized: right-click the app and choose Open,
             or run `xattr -cr "/Applications/Slop Video Compositor.app"`.
+
+            **Windows** — the installer is not signed: SmartScreen may warn,
+            choose **More info → Run anyway**.
         with:
           result-encoding: string
           script: |
@@ -68,13 +84,16 @@ jobs:
 
   build:
     needs: create-release
+    # create-release is skipped on workflow_dispatch; still build then.
+    if: ${{ !cancelled() && needs.create-release.result != 'failure' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-apple-darwin
-          - target: x86_64-apple-darwin
-    runs-on: macos-latest
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: macos-latest, target: x86_64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
