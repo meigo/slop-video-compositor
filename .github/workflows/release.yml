@@ -40,7 +40,8 @@ jobs:
             - **`_x64.dmg`** — older Macs with an Intel processor
 
             Not sure? Apple menu → **About This Mac**: "Chip: Apple M…" means Apple Silicon,
-            "Processor: Intel…" means Intel.
+            "Processor: Intel…" means Intel. The `.app.tar.gz` files are the same apps
+            without an installer — most users want the `.dmg`.
 
             ### Requirements
 
