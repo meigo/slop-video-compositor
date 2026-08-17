@@ -9,7 +9,64 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify versions match the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          for entry in \
+            "src-tauri/tauri.conf.json:$(jq -r .version src-tauri/tauri.conf.json)" \
+            "package.json:$(jq -r .version package.json)" \
+            "src-tauri/Cargo.toml:$(grep -m1 '^version = ' src-tauri/Cargo.toml | cut -d'"' -f2)"
+          do
+            if [ "${entry#*:}" != "$tag" ]; then
+              echo "::error::${entry%%:*} is at version ${entry#*:}, but the tag is $GITHUB_REF_NAME"
+              exit 1
+            fi
+          done
+
+      - uses: actions/github-script@v9
+        id: create
+        env:
+          RELEASE_BODY: |
+            ### Which download do I need?
+
+            - **`_aarch64.dmg`** — Macs with an Apple chip (M1/M2/M3/M4, from 2020 onwards)
+            - **`_x64.dmg`** — older Macs with an Intel processor
+
+            Not sure? Apple menu → **About This Mac**: "Chip: Apple M…" means Apple Silicon,
+            "Processor: Intel…" means Intel.
+
+            ### Requirements
+
+            Requires **ffmpeg** on your PATH (`brew install ffmpeg`).
+
+            Used for probe, filmstrip/waveform generation, and export.
+
+            ### First launch
+
+            The app is not notarized: right-click the app and choose Open,
+            or run `xattr -cr "/Applications/Slop Video Compositor.app"`.
+        with:
+          result-encoding: string
+          script: |
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: process.env.GITHUB_REF_NAME,
+              name: `Slop Video Compositor ${process.env.GITHUB_REF_NAME}`,
+              body: process.env.RELEASE_BODY,
+              draft: true,
+            });
+            return data.id;
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -39,27 +96,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Slop Video Compositor ${{ github.ref_name }}"
-          releaseBody: |
-            ### Which download do I need?
-
-            - **`_aarch64.dmg`** — Macs with an Apple chip (M1/M2/M3/M4, from 2020 onwards)
-            - **`_x64.dmg`** — older Macs with an Intel processor
-
-            Not sure? Apple menu → **About This Mac**: "Chip: Apple M…" means Apple Silicon,
-            "Processor: Intel…" means Intel. The `.app.tar.gz` files are the same apps
-            without an installer — most users want the `.dmg`.
-
-            ### Requirements
-
-            Requires **ffmpeg** on your PATH (`brew install ffmpeg`).
-
-            Used for probe, filmstrip/waveform generation, and export.
-
-            ### First launch
-
-            The app is not notarized: right-click the app and choose Open,
-            or run `xattr -cr "/Applications/Slop Video Compositor.app"`.
-          releaseDraft: true
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: --target ${{ matrix.target }}

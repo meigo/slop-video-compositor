@@ -62,8 +62,9 @@ Also: [Rust toolchain](https://rustup.rs/) and [Tauri 2 prerequisites](https://v
 
 ## Download
 
-macOS builds (Apple Silicon + Intel) are published on the
-[Releases](https://github.com/meigo/slop-video-compositor/releases) page when a `v*` tag is pushed.
+macOS builds (Apple Silicon + Intel) are on the
+[Releases](https://github.com/meigo/slop-video-compositor/releases) page. Pushing a `v*` tag builds
+both DMGs into a draft release, which a maintainer then publishes.
 Install ffmpeg separately (`brew install ffmpeg`). First launch: right-click → Open if Gatekeeper blocks the unsigned app.
 
 ## Development
