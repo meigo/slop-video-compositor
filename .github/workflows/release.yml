@@ -64,8 +64,17 @@ jobs:
 
             ### First launch
 
-            **macOS** — the app is not notarized: right-click the app and choose Open,
-            or run `xattr -cr "/Applications/Slop Video Compositor.app"`.
+            **macOS** — the app is not signed or notarized, so macOS reports it as
+            *"damaged and can't be opened"*. Nothing is actually wrong with the download —
+            that is Gatekeeper's wording for an app without a signature it recognises.
+            Drag the app to **Applications**, then run:
+
+            ```
+            xattr -cr "/Applications/Slop Video Compositor.app"
+            ```
+
+            It opens normally from then on. Run the command after copying — it cannot
+            clear the flag while the app is still on the read-only disk image.
 
             **Windows** — the installer is not signed: SmartScreen may warn,
             choose **More info → Run anyway**.
