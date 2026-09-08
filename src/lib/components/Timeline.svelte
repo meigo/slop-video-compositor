@@ -1086,23 +1086,13 @@
                 title="Play range {formatTimestamp(bounds.start)} – {formatTimestamp(bounds.end)} (preview only)"
                 aria-hidden="true"
               ></div>
+              <!-- Asymmetric half-wedges, so they differ from the playhead head in SHAPE: red on
+                   amber is the worst pair for the common colour blindnesses. -->
               {#if app.playIn != null}
-                <div
-                  class="play-io in"
-                  style:left="{bounds.start * pxPerSecond}px"
-                  aria-hidden="true"
-                >
-                  I
-                </div>
+                <div class="play-io in" style:left="{bounds.start * pxPerSecond}px" aria-hidden="true"></div>
               {/if}
               {#if app.playOut != null}
-                <div
-                  class="play-io out"
-                  style:left="{bounds.end * pxPerSecond}px"
-                  aria-hidden="true"
-                >
-                  O
-                </div>
+                <div class="play-io out" style:left="{bounds.end * pxPerSecond - 8}px" aria-hidden="true"></div>
               {/if}
             {/if}
             {#each p.markers ?? [] as marker (marker.id)}
@@ -1301,6 +1291,7 @@
         <div
           class="markers"
           style:height="{RULER_H + displayTracks.length * TRACK_H}px"
+          style:--ruler-h="{RULER_H}px"
           aria-hidden="false"
         >
           <!-- Playhead (drag to scrub) -->
@@ -1375,19 +1366,16 @@
     align-items: flex-start;
     min-height: 0;
     min-width: 0;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    /* Vertical scroll when many tracks; horizontal stays in .scroll */
     overflow-x: hidden;
     overflow-y: auto;
-    background: var(--bg);
+    background: var(--color-ground);
   }
 
   .labels {
     flex: 0 0 auto;
     width: 52px;
-    border-right: 1px solid var(--border);
-    background: var(--surface);
+    border-right: 1px solid var(--color-line);
+    background: var(--color-panel);
     z-index: 2;
     position: sticky;
     left: 0;
@@ -1397,61 +1385,56 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 600;
-    font-size: 0.8rem;
-    color: var(--muted);
-    border-bottom: 1px solid var(--border);
+    gap: 4px;
+    font-size: 11px;
+    color: var(--color-muted);
+    border-bottom: 1px solid var(--color-line);
+    border-left: 2px solid transparent;
     cursor: pointer;
     user-select: none;
   }
 
   .label-row:hover {
-    background: var(--surface-2);
-    color: var(--text);
+    color: var(--color-text);
   }
 
+  /* Selection is the 2px left bar, reserved at all times so nothing moves. */
   .label-row.selected {
-    color: var(--accent);
-    background: rgba(91, 140, 255, 0.1);
+    border-left-color: var(--color-accent);
+    color: var(--color-text);
   }
 
   .label-row.solo {
-    color: var(--warn);
-    background: rgba(212, 160, 23, 0.12);
+    color: var(--color-text);
   }
 
   .label-row .track-name {
     pointer-events: none;
   }
 
+  /* Solo is session-only: warn, as a fixed 20px square like the audio editor's S flag. */
   .solo-badge {
-    margin-left: 0.2rem;
-    font-size: 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    font-size: 10px;
     font-weight: 700;
-    color: var(--warn);
+    color: var(--color-ground);
+    background: var(--color-warn);
     pointer-events: none;
   }
 
-  /* Empty timeline (no media on this track) — not the same as trimmed handles */
+  /* Gap hatch on tracks that hold clips. Stripes are text at 3%, so they track the palette. */
   .lane.has-gaps {
     background-image: repeating-linear-gradient(
       -45deg,
       transparent,
       transparent 6px,
-      rgba(255, 255, 255, 0.025) 6px,
-      rgba(255, 255, 255, 0.025) 12px
-    );
-  }
-
-  /* Selection tint must layer with hatch (shorthand `background` would wipe it). */
-  .lane.has-gaps.selected {
-    background-color: rgba(91, 140, 255, 0.06);
-    background-image: repeating-linear-gradient(
-      -45deg,
-      transparent,
-      transparent 6px,
-      rgba(255, 255, 255, 0.035) 6px,
-      rgba(255, 255, 255, 0.035) 12px
+      color-mix(in srgb, var(--color-text) 3%, transparent) 6px,
+      color-mix(in srgb, var(--color-text) 3%, transparent) 12px
     );
   }
 
@@ -1467,12 +1450,7 @@
     border-radius: 3px;
     pointer-events: none;
     z-index: 0;
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.12
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.12);
     border: 1px dashed hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.4);
     opacity: 0.9;
   }
@@ -1522,8 +1500,8 @@
     position: sticky;
     top: 0;
     z-index: 2;
-    background: var(--surface-2);
-    border-bottom: 1px solid var(--border);
+    background: var(--color-panel);
+    border-bottom: 1px solid var(--color-line);
     cursor: ew-resize;
     touch-action: none;
     user-select: none;
@@ -1553,21 +1531,23 @@
     pointer-events: auto;
   }
 
+  /* Ticks grow up from the bottom; labels sit at the top, 3px right of their tick. */
   .tick {
     position: absolute;
-    top: 0;
     bottom: 0;
-    border-left: 1px solid var(--border);
+    width: 1px;
+    height: 12px;
+    background: var(--color-line);
     pointer-events: none;
   }
 
   .tick-label {
     position: absolute;
-    top: 4px;
-    left: 4px;
-    font-size: 0.7rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    color: var(--muted);
+    bottom: 11px;
+    left: 3px;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-muted);
     white-space: nowrap;
   }
 
@@ -1580,8 +1560,8 @@
     flex-direction: column;
     align-items: flex-start;
     width: max-content;
-    min-width: 1.75rem;
-    max-width: 6rem;
+    min-width: 24px;
+    max-width: 96px;
     margin-left: -8px;
     padding: 1px 4px 0 3px;
     border: none;
@@ -1598,14 +1578,13 @@
     bottom: 0;
     left: 7px;
     width: 2px;
-    background: var(--warn);
+    background: var(--color-warn);
     opacity: 0.85;
     pointer-events: none;
   }
 
   .marker:hover::before {
     opacity: 1;
-    box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.35);
   }
 
   .marker-flag {
@@ -1614,29 +1593,27 @@
     flex: 0 0 auto;
     width: 0;
     height: 0;
-    margin-top: 0;
-    border-left: 10px solid var(--warn);
+    border-left: 10px solid var(--color-warn);
     border-right: 0 solid transparent;
     border-bottom: 9px solid transparent;
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
     pointer-events: none;
   }
 
   .marker-label {
     position: relative;
     z-index: 1;
-    max-width: 5rem;
+    max-width: 80px;
     margin-top: 1px;
     margin-left: 1px;
     padding: 0 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.65rem;
+    font-size: 10px;
     font-weight: 600;
-    line-height: 1.25;
-    color: #1a1408;
-    background: var(--warn);
+    line-height: 14px;
+    color: var(--color-ground);
+    background: var(--color-warn);
     border-radius: 2px;
     pointer-events: none;
   }
@@ -1651,59 +1628,48 @@
   .marker-rename {
     position: relative;
     z-index: 1;
-    width: 6.5rem;
-    min-width: 4rem;
-    max-width: 10rem;
+    width: 96px;
+    min-width: 64px;
+    max-width: 160px;
     margin: 1px 0 0 1px;
-    padding: 0.1em 0.3em;
-    font-size: 0.7rem;
-    font-weight: 600;
-    line-height: 1.25;
-    color: #1a1408;
-    background: #ffe6a0;
-    border: 1px solid #c4920f;
-    border-radius: 3px;
-    outline: none;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    padding: 0 4px;
+    height: 16px;
+    font-size: 10px;
+    line-height: 16px;
+    color: var(--color-text);
+    background: var(--color-raised);
+    border: none;
+    border-radius: 4px;
   }
 
-  .marker-rename:focus {
-    border-color: var(--accent);
-  }
-
+  /* warn: the play range is preview-only. Wash in the ruler, 1px lines, 8px half-wedges. */
   .play-range {
     position: absolute;
     top: 0;
     bottom: 0;
-    background: rgba(91, 140, 255, 0.18);
-    border-left: 2px solid var(--accent);
-    border-right: 2px solid var(--accent);
+    background: color-mix(in srgb, var(--color-warn) 15%, transparent);
+    border-left: 1px solid var(--color-warn);
+    border-right: 1px solid var(--color-warn);
     pointer-events: none;
     z-index: 1;
   }
 
   .play-io {
     position: absolute;
-    top: 1px;
-    z-index: 2;
-    min-width: 0.9rem;
-    padding: 0 2px;
-    font-size: 0.65rem;
-    font-weight: 700;
-    line-height: 1.15;
-    color: #fff;
-    background: var(--accent);
-    border-radius: 2px;
+    top: 0;
+    width: 8px;
+    height: 8px;
+    background: var(--color-warn);
     pointer-events: none;
-    transform: translateX(-50%);
+    z-index: 2;
   }
 
   .play-io.in {
-    transform: translateX(0);
+    clip-path: polygon(0 0, 100% 0, 0 100%);
   }
 
   .play-io.out {
-    transform: translateX(-100%);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
   }
 
   @media (max-width: 900px) {
@@ -1718,12 +1684,8 @@
 
   .lane {
     position: relative;
-    border-bottom: 1px solid var(--border);
-    background-color: var(--bg);
-  }
-
-  .lane.selected {
-    background-color: rgba(91, 140, 255, 0.06);
+    border-bottom: 1px solid var(--color-line);
+    background-color: var(--color-ground);
   }
 
   .clip {
@@ -1796,33 +1758,15 @@
     );
   }
 
+  /* Selection is the accent OUTLINE; the fill stays calm so hue keeps meaning "which file". */
   .clip.active {
-    border-color: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc((var(--clip-l) + 8) * 1%),
-      0.95
-    );
-    border-left-color: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc((var(--clip-l) + 10) * 1%),
-      1
-    );
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.52
-    );
-    box-shadow: 0 0 0 1px
-      hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.85);
+    outline: 1px solid var(--color-accent);
+    outline-offset: -1px;
   }
 
+  /* The clip the inspector edits, among a multi-selection. */
   .clip.primary {
-    box-shadow:
-      0 0 0 1px hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.85),
-      0 0 0 3px rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 0 2px var(--color-accent);
   }
 
   .clip.dragging {
@@ -1842,7 +1786,7 @@
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
-    margin-left: 0.2rem;
+    margin-left: 3px;
     opacity: 0.9;
     pointer-events: none;
     position: relative;
@@ -1856,8 +1800,8 @@
   .clip-label {
     flex: 1;
     min-width: 0;
-    padding: 0 0.35rem;
-    font-size: 0.75rem;
+    padding: 0 5px;
+    font-size: 11px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1876,21 +1820,19 @@
     position: relative;
     z-index: 2;
     background: transparent;
-    z-index: 2;
     touch-action: none;
   }
 
   .edge:hover,
   .edge:active {
-    background: rgba(255, 255, 255, 0.18);
+    background: color-mix(in srgb, var(--color-text) 18%, transparent);
   }
 
   .playhead {
     position: absolute;
     top: 0;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--danger);
+    width: 1px;
+    background: var(--color-danger);
     cursor: ew-resize;
     touch-action: none;
     outline: none;
@@ -1901,7 +1843,7 @@
   }
 
   .playhead:focus-visible .playhead-hit {
-    background: rgba(240, 113, 120, 0.18);
+    background: color-mix(in srgb, var(--color-danger) 18%, transparent);
   }
 
   /*
@@ -1911,22 +1853,23 @@
    */
   .playhead-hit {
     position: absolute;
-    top: 28px; /* = RULER_H */
-    left: -5px;
+    top: var(--ruler-h);
+    left: -6px;
     width: 12px;
-    height: calc(100% - 28px);
+    height: calc(100% - var(--ruler-h));
     background: transparent;
   }
 
+  /* 12 wide × 6 tall: half-width equals height, so the point is a right angle. */
   .playhead-head {
     position: absolute;
     top: 0;
-    left: -5px;
+    left: -6px;
     width: 0;
     height: 0;
     border-left: 6px solid transparent;
     border-right: 6px solid transparent;
-    border-top: 9px solid var(--danger);
+    border-top: 6px solid var(--color-danger);
     filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8));
     pointer-events: none;
   }
@@ -1942,12 +1885,12 @@
 
   .duration-handle.active .duration-handle-bar,
   .duration-handle:hover .duration-handle-bar {
-    background: var(--accent-hover);
+    background: var(--color-accent-hover);
   }
 
   .duration-handle.preview-trim .duration-handle-bar,
   .duration-handle.preview-trim .duration-handle-grip {
-    background: var(--warn);
+    background: var(--color-warn);
   }
 
   .duration-handle-bar {
@@ -1956,7 +1899,7 @@
     bottom: 0;
     left: 4px;
     width: 2px;
-    background: var(--accent);
+    background: var(--color-accent);
   }
 
   .duration-handle-grip {
@@ -1966,12 +1909,13 @@
     width: 10px;
     height: 16px;
     border-radius: 2px;
-    background: var(--accent);
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+    background: var(--color-accent);
+    border: 1px solid var(--color-line);
   }
 
   .duration-handle:focus-visible .duration-handle-grip {
-    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+    box-shadow:
+      0 0 0 2px var(--color-ground),
+      0 0 0 4px var(--color-accent);
   }
 </style>
