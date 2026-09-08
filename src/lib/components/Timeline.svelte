@@ -1636,19 +1636,27 @@
   }
 
   /* Ticks grow up from the bottom; labels sit at the top, 3px right of their tick. */
+  /* Full ruler height, but only the bottom 6px are painted: the box is what the time label is
+     centred against, and a tick drawn any taller would strike through that label. */
   .tick {
     position: absolute;
+    top: 0;
     bottom: 0;
     width: 1px;
-    height: 12px;
-    background: var(--color-line);
+    background: linear-gradient(
+      to bottom,
+      transparent calc(100% - 6px),
+      var(--color-line) calc(100% - 6px)
+    );
     pointer-events: none;
   }
 
+  /* Vertically centred in the ruler rather than stacked above the ticks. */
   .tick-label {
     position: absolute;
-    bottom: 11px;
+    top: 50%;
     left: 3px;
+    transform: translateY(-50%);
     font-size: 10px;
     font-variant-numeric: tabular-nums;
     color: var(--color-muted);
@@ -1656,10 +1664,13 @@
   }
 
   /* Hit box covers stem + flag + label (not just the 2px line). */
+  /* The flag and its label straddle the ruler's bottom edge, roughly centred on it, so they no
+     longer sit on top of the time labels. The button box extends past the ruler by the same
+     amount the content does, so the whole marker stays grabbable for a drag. */
   .marker {
     position: absolute;
     top: 0;
-    bottom: 0;
+    bottom: -20px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -1667,7 +1678,7 @@
     min-width: 24px;
     max-width: 96px;
     margin-left: -8px;
-    padding: 1px 4px 0 3px;
+    padding: 24px 4px 0 3px;
     border: none;
     background: transparent;
     cursor: grab;
@@ -1678,11 +1689,12 @@
   /* Markers are SAVED document state, so they are deliberately not amber: amber is reserved for
      session-only state that never reaches the export, which is the in/out range. Sharing the
      colour made a bookmark and a preview boundary read as the same kind of thing. */
+  /* The stem stops at the ruler's edge even though the button now reaches below it. */
   .marker::before {
     content: "";
     position: absolute;
     top: 0;
-    bottom: 0;
+    bottom: 20px;
     left: 7px;
     width: 1px;
     background: var(--color-text);
