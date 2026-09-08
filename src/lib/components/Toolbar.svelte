@@ -12,6 +12,19 @@
   import SaveAll from "@lucide/svelte/icons/save-all";
   import Undo2 from "@lucide/svelte/icons/undo-2";
 
+  import {
+    BTN,
+    CONTROL_H,
+    DIVIDER,
+    FIELD,
+    HEADING,
+    MENU_ITEM,
+    MENU_PANEL,
+    TEXT_BTN,
+    markedBtnClass,
+    toggleClass,
+  } from "$lib/ui";
+
   import type { ImportPlacement } from "../../state/appState.svelte";
 
   interface Props {
@@ -69,8 +82,16 @@
     "new-tracks": "New tracks",
   };
 
-  const ICON = 18;
-  const CHEV = 16;
+  const ICON = 16;
+  const CHEV = 14;
+
+  /** Menu trigger: the audio editor's ToolbarMenu look. */
+  const trigger = (open: boolean): string =>
+    `${CONTROL_H} gap-1 px-2 text-xs ` +
+    (open ? "bg-raised text-text" : "text-muted hover:bg-raised hover:text-text");
+  /** `menuitemradio`: the checked item reads in accent. */
+  const radioItem = (checked: boolean): string =>
+    `${MENU_ITEM} ${checked ? "text-accent" : ""}`;
 
   type MenuId = "file" | "import" | "canvas" | null;
   let openMenu = $state<MenuId>(null);
@@ -144,61 +165,47 @@
   });
 </script>
 
-<header class="toolbar">
-  <div class="group">
-    <!-- File: secondary project actions -->
-    <div class="menu" data-toolbar-menu class:open={openMenu === "file"}>
+<header
+  class="relative z-40 flex h-11 shrink-0 items-center gap-3 border-b border-line bg-panel px-2 text-text"
+>
+  <!-- file -->
+  <div class="flex items-center gap-1">
+    <div class="relative shrink-0" data-toolbar-menu>
       <button
         type="button"
-        class="ghost menu-trigger"
-        class:open={openMenu === "file"}
+        class={trigger(openMenu === "file")}
         aria-haspopup="menu"
         aria-expanded={openMenu === "file"}
         title="File — New, Open, Save, Save As"
         onpointerdown={(e) => e.stopPropagation()}
         onclick={(e) => toggle("file", e)}
       >
-        <span>File</span>
-        <ChevronDown size={CHEV} strokeWidth={2} aria-hidden="true" />
+        File<span class="text-[9px] opacity-70" aria-hidden="true">▾</span>
       </button>
       {#if openMenu === "file"}
-        <div class="menu-panel" role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            title="New project"
-            onclick={() => runAndClose(onNew)}
-          >
+        <div class="{MENU_PANEL} left-0" role="menu">
+          <button type="button" class={MENU_ITEM} role="menuitem" title="New project" onclick={() => runAndClose(onNew)}>
             <FilePlus size={ICON} strokeWidth={2} aria-hidden="true" />
             <span>New</span>
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            title="Open project (⌘O)"
-            onclick={() => runAndClose(onOpen)}
-          >
+          <button type="button" class={MENU_ITEM} role="menuitem" title="Open project (⌘O)" onclick={() => runAndClose(onOpen)}>
             <FolderOpen size={ICON} strokeWidth={2} aria-hidden="true" />
             <span>Open…</span>
-            <kbd>⌘O</kbd>
+            <span class="ml-auto pl-4 text-muted">⌘O</span>
           </button>
-          <hr />
+          <div class="my-1 border-t border-line"></div>
           <button
             type="button"
+            class={MENU_ITEM}
             role="menuitem"
             title={dirty ? "Save project — unsaved changes (⌘S)" : "Save project (⌘S)"}
             onclick={() => runAndClose(onSave)}
           >
             <Save size={ICON} strokeWidth={2} aria-hidden="true" />
             <span>Save{dirty ? " *" : ""}</span>
-            <kbd>⌘S</kbd>
+            <span class="ml-auto pl-4 text-muted">⌘S</span>
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            title="Save project as… (⌘⇧S)"
-            onclick={() => runAndClose(onSaveAs)}
-          >
+          <button type="button" class={MENU_ITEM} role="menuitem" title="Save project as… (⌘⇧S)" onclick={() => runAndClose(onSaveAs)}>
             <SaveAll size={ICON} strokeWidth={2} aria-hidden="true" />
             <span>Save As…</span>
           </button>
@@ -206,28 +213,30 @@
       {/if}
     </div>
 
+    <!-- Dirty state recolours the glyph: nothing is inserted, so nothing moves. -->
     <button
       type="button"
-      class="ghost"
+      class={markedBtnClass(dirty)}
       onclick={onSave}
-      title={dirty ? "Unsaved changes" : "Save (⌘S)"}
+      title={dirty ? "Save — unsaved changes (⌘S)" : "Save (⌘S)"}
+      aria-label="Save"
     >
       <Save size={ICON} strokeWidth={2} aria-hidden="true" />
-      <span>Save{dirty ? " *" : ""}</span>
     </button>
   </div>
 
-  <div class="group">
-    <!-- Import split: main action + options -->
-    <div class="split" data-toolbar-menu>
-      <button type="button" class="ghost split-main" onclick={onImport} title="Import videos (⌘I)">
-        <Film size={ICON} strokeWidth={2} aria-hidden="true" />
-        <span>Import</span>
-      </button>
+  <div class={DIVIDER}></div>
+
+  <!-- import -->
+  <div class="flex items-center gap-1">
+    <button type="button" class={TEXT_BTN} onclick={onImport} title="Import videos (⌘I)">
+      <Film size={ICON} strokeWidth={2} aria-hidden="true" />
+      <span>Import</span>
+    </button>
+    <div class="relative shrink-0" data-toolbar-menu>
       <button
         type="button"
-        class="ghost split-chev"
-        class:open={openMenu === "import"}
+        class={trigger(openMenu === "import")}
         aria-haspopup="menu"
         aria-expanded={openMenu === "import"}
         aria-label="Import placement options"
@@ -238,12 +247,12 @@
         <ChevronDown size={CHEV} strokeWidth={2} aria-hidden="true" />
       </button>
       {#if openMenu === "import"}
-        <div class="menu-panel import-panel" role="menu">
-          <div class="panel-label">Place clips</div>
+        <div class="{MENU_PANEL} left-0" role="menu">
+          <div class="{HEADING} px-3 py-1">Place clips</div>
           <button
             type="button"
+            class={radioItem(importPlacement === "append")}
             role="menuitemradio"
-            class:active={importPlacement === "append"}
             aria-checked={importPlacement === "append"}
             title="Place each import after the last clip on the selected track"
             onclick={() => {
@@ -255,8 +264,8 @@
           </button>
           <button
             type="button"
+            class={radioItem(importPlacement === "playhead")}
             role="menuitemradio"
-            class:active={importPlacement === "playhead"}
             aria-checked={importPlacement === "playhead"}
             title="Place imports at the current playhead time"
             onclick={() => {
@@ -268,8 +277,8 @@
           </button>
           <button
             type="button"
+            class={radioItem(importPlacement === "new-tracks")}
             role="menuitemradio"
-            class:active={importPlacement === "new-tracks"}
             aria-checked={importPlacement === "new-tracks"}
             title="Create a new track for each imported file (⌘⇧I)"
             onclick={() => {
@@ -279,22 +288,95 @@
           >
             Each → new track
           </button>
-          <hr />
-          <button
-            type="button"
-            role="menuitem"
-            title="Import video files (⌘I)"
-            onclick={() => runAndClose(onImport)}
-          >
+          <div class="my-1 border-t border-line"></div>
+          <button type="button" class={MENU_ITEM} role="menuitem" title="Import video files (⌘I)" onclick={() => runAndClose(onImport)}>
             <Film size={ICON} strokeWidth={2} aria-hidden="true" />
             <span>Import now…</span>
           </button>
         </div>
       {/if}
     </div>
+  </div>
+
+  <div class={DIVIDER}></div>
+
+  <!-- edit -->
+  <div class="flex items-center gap-1">
+    <button type="button" class={BTN} onclick={onUndo} disabled={!canUndo} title="Undo (⌘Z)" aria-label="Undo">
+      <Undo2 size={ICON} strokeWidth={2} aria-hidden="true" />
+    </button>
+    <button type="button" class={BTN} onclick={onRedo} disabled={!canRedo} title="Redo (⌘⇧Z)" aria-label="Redo">
+      <Redo2 size={ICON} strokeWidth={2} aria-hidden="true" />
+    </button>
+  </div>
+
+  <!-- options + output, pushed right -->
+  <div class="ml-auto flex items-center gap-1">
+    <div class="relative shrink-0" data-toolbar-menu>
+      <button
+        type="button"
+        class="{trigger(openMenu === 'canvas')} tabular-nums"
+        aria-haspopup="dialog"
+        aria-expanded={openMenu === "canvas"}
+        title="Canvas size — presets and custom W×H ({canvasWidth}×{canvasHeight})"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={(e) => toggle("canvas", e)}
+      >
+        <Ratio size={ICON} strokeWidth={2} aria-hidden="true" />
+        {canvasWidth}×{canvasHeight}<span class="text-[9px] opacity-70" aria-hidden="true">▾</span>
+      </button>
+      {#if openMenu === "canvas"}
+        <div class="{MENU_PANEL} right-0 flex flex-col gap-2 px-3 pb-2" role="dialog" aria-label="Canvas size">
+          <div class={HEADING}>Canvas</div>
+          <div class="flex items-center gap-1 text-[11px] text-muted">
+            <label class="flex items-center gap-1">
+              <span>W</span>
+              <input
+                class="{FIELD} w-16"
+                type="number"
+                min="1"
+                step="1"
+                bind:value={w}
+                onchange={applyCanvas}
+                onkeydown={onCanvasKey}
+              />
+            </label>
+            <span class="opacity-60">×</span>
+            <label class="flex items-center gap-1">
+              <span>H</span>
+              <input
+                class="{FIELD} w-16"
+                type="number"
+                min="1"
+                step="1"
+                bind:value={h}
+                onchange={applyCanvas}
+                onkeydown={onCanvasKey}
+              />
+            </label>
+          </div>
+          <div class="flex flex-wrap gap-1" role="group" aria-label="Canvas presets">
+            {#each CANVAS_PRESETS as preset}
+              <button
+                type="button"
+                class={toggleClass(canvasWidth === preset.w && canvasHeight === preset.h)}
+                aria-pressed={canvasWidth === preset.w && canvasHeight === preset.h}
+                title="{preset.w}×{preset.h}"
+                onclick={() => onPreset(preset.w, preset.h)}
+              >
+                {preset.label}
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <div class={DIVIDER}></div>
 
     <button
       type="button"
+      class="{CONTROL_H} gap-1 bg-accent px-2 text-xs font-medium whitespace-nowrap text-ground hover:bg-accent-hover disabled:opacity-50 disabled:hover:bg-accent"
       onclick={onExport}
       disabled={!canExport}
       title={exporting
@@ -312,297 +394,4 @@
       {/if}
     </button>
   </div>
-
-  <div class="group">
-    <button type="button" class="ghost icon-only" onclick={onUndo} disabled={!canUndo} title="Undo (⌘Z)">
-      <Undo2 size={ICON} strokeWidth={2} aria-hidden="true" />
-    </button>
-    <button
-      type="button"
-      class="ghost icon-only"
-      onclick={onRedo}
-      disabled={!canRedo}
-      title="Redo (⌘⇧Z)"
-    >
-      <Redo2 size={ICON} strokeWidth={2} aria-hidden="true" />
-    </button>
-  </div>
-
-  <div class="group canvas-group">
-    <div class="menu menu-end" data-toolbar-menu class:open={openMenu === "canvas"}>
-      <button
-        type="button"
-        class="ghost menu-trigger canvas-trigger"
-        class:open={openMenu === "canvas"}
-        aria-haspopup="dialog"
-        aria-expanded={openMenu === "canvas"}
-        title="Canvas size — presets and custom W×H ({canvasWidth}×{canvasHeight})"
-        onpointerdown={(e) => e.stopPropagation()}
-        onclick={(e) => toggle("canvas", e)}
-      >
-        <Ratio size={ICON} strokeWidth={2} aria-hidden="true" />
-        <span class="mono">{canvasWidth}×{canvasHeight}</span>
-        <ChevronDown size={CHEV} strokeWidth={2} aria-hidden="true" />
-      </button>
-      {#if openMenu === "canvas"}
-        <div class="menu-panel canvas-panel" role="dialog" aria-label="Canvas size">
-          <div class="panel-label">Canvas</div>
-          <div class="canvas-fields">
-            <label>
-              <span>W</span>
-              <input
-                class="compact"
-                type="number"
-                min="1"
-                step="1"
-                bind:value={w}
-                onchange={applyCanvas}
-                onkeydown={onCanvasKey}
-              />
-            </label>
-            <span class="times">×</span>
-            <label>
-              <span>H</span>
-              <input
-                class="compact"
-                type="number"
-                min="1"
-                step="1"
-                bind:value={h}
-                onchange={applyCanvas}
-                onkeydown={onCanvasKey}
-              />
-            </label>
-          </div>
-          <div class="presets" role="group" aria-label="Canvas presets">
-            {#each CANVAS_PRESETS as preset}
-              <button
-                type="button"
-                class="ghost preset"
-                class:active={canvasWidth === preset.w && canvasHeight === preset.h}
-                title="{preset.w}×{preset.h}"
-                onclick={() => onPreset(preset.w, preset.h)}
-              >
-                {preset.label}
-              </button>
-            {/each}
-          </div>
-        </div>
-      {/if}
-    </div>
-  </div>
 </header>
-
-<style>
-  .toolbar {
-    position: relative;
-    z-index: 40;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem 0.75rem;
-    padding: 0.45rem 0.7rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    min-width: 0;
-    /* Must stay visible — overflow clips absolute menu panels */
-    overflow: visible;
-    font-size: 0.95rem;
-  }
-
-  .group {
-    position: relative;
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: 0.35rem;
-    flex-shrink: 0;
-  }
-
-  .group :global(button) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.95rem;
-    font-weight: 500;
-    padding: 0.45em 0.8em;
-  }
-
-  .canvas-group {
-    margin-left: auto;
-  }
-
-  .icon-only {
-    padding: 0.4em 0.5em;
-  }
-
-  /* —— Menus —— */
-  .menu,
-  .split {
-    position: relative;
-    display: inline-flex;
-    align-items: stretch;
-  }
-
-  .menu-trigger {
-    gap: 0.2rem;
-  }
-
-  .menu-trigger.open,
-  .split-chev.open {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  .split-main {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-    border-right-width: 0;
-  }
-
-  .split-chev {
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-    padding: 0.4em 0.35em;
-    min-width: 1.6rem;
-    justify-content: center;
-  }
-
-  .menu-panel {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 100;
-    min-width: 11.5rem;
-    padding: 0.3rem;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-  }
-
-  .menu-end .menu-panel {
-    left: auto;
-    right: 0;
-  }
-
-  .menu-panel hr {
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: 0.25rem 0;
-  }
-
-  .menu-panel :global(button) {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    width: 100%;
-    text-align: left;
-    padding: 0.45em 0.6em;
-    border-radius: 5px;
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--text);
-    font-weight: 500;
-    font-size: 0.95rem;
-  }
-
-  .menu-panel :global(button:hover) {
-    background: var(--surface-2);
-    border-color: transparent;
-  }
-
-  .menu-panel :global(button.active) {
-    background: rgba(91, 140, 255, 0.12);
-    color: var(--accent);
-  }
-
-  .menu-panel kbd {
-    margin-left: auto;
-    font-size: 0.75rem;
-    color: var(--muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-weight: 400;
-  }
-
-  .panel-label {
-    padding: 0.3rem 0.55rem 0.4rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-  }
-
-  .import-panel {
-    min-width: 12rem;
-  }
-
-  .canvas-panel {
-    min-width: 14rem;
-    gap: 0.45rem;
-  }
-
-  .canvas-fields {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0 0.35rem;
-    color: var(--muted);
-    font-size: 0.95rem;
-  }
-
-  .canvas-fields label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-
-  .canvas-fields input {
-    width: 4.25rem;
-  }
-
-  .times {
-    opacity: 0.6;
-  }
-
-  .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-variant-numeric: tabular-nums;
-    font-size: 0.95rem;
-  }
-
-  .presets {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    padding: 0 0.25rem 0.15rem;
-  }
-
-  .preset {
-    padding: 0.3em 0.5em !important;
-    width: auto !important;
-    font-size: 0.9rem !important;
-    background: var(--surface-2) !important;
-    border-color: var(--border) !important;
-  }
-
-  .preset.active {
-    border-color: var(--accent) !important;
-    color: var(--accent) !important;
-  }
-
-  :global(.spin) {
-    animation: spin 0.9s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-</style>
