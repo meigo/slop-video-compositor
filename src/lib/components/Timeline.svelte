@@ -880,7 +880,7 @@
         <Maximize2 size={14} strokeWidth={2} aria-hidden="true" />
         <span>Fit</span>
       </button>
-      <div class={DIVIDER}></div>
+      <div class={DIVIDER} aria-hidden="true"></div>
       <button type="button" class={TEXT_BTN} onclick={onAddTrack} title="Add video track" aria-label="Add track">
         <Plus size={16} strokeWidth={2} aria-hidden="true" />
         <span>Track</span>
@@ -904,7 +904,7 @@
         <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
-    <div class={DIVIDER}></div>
+    <div class={DIVIDER} aria-hidden="true"></div>
     <div class="flex items-center gap-1" role="group" aria-label="Edit">
       <button
         type="button"
@@ -929,7 +929,7 @@
         <span>Delete</span>
       </button>
     </div>
-    <div class={DIVIDER}></div>
+    <div class={DIVIDER} aria-hidden="true"></div>
     <div class="flex items-center gap-1" role="group" aria-label="Display">
       <button
         type="button"
@@ -961,7 +961,7 @@
         </button>
       {/each}
     </div>
-    <div class={DIVIDER}></div>
+    <div class={DIVIDER} aria-hidden="true"></div>
     <div class="flex items-center gap-1" role="group" aria-label="Play range">
       <!-- warn: the play range is preview-only and never reaches the export. -->
       <button
@@ -1003,7 +1003,7 @@
         </span>
       {/if}
     </div>
-    <div class={DIVIDER}></div>
+    <div class={DIVIDER} aria-hidden="true"></div>
     <div class="flex items-center gap-1" role="group" aria-label="Markers">
       <button
         type="button"
