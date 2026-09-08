@@ -21,7 +21,7 @@
 - No `font-mono` anywhere; digits use `tabular-nums` in a fixed-width box.
 - Work on branch `style-alignment`. Commit after every task with the trailer:
   ```
-  Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+  Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
   Claude-Session: https://claude.ai/code/session_011DQ5GhUokRgf45naWgDJtA
   ```
 - Visual check for every task: `npm run dev`, open `http://localhost:1420` in a browser. Tauri calls fail gracefully there (the ffmpeg banner appears, no project loads), which is enough for the chrome. The timeline body needs `npm run tauri dev` with a project open.
@@ -1279,9 +1279,10 @@ After the `types` import add:
 ```ts
   import { BORDERED_BTN, FIELD, HEADING, STRIP, toggleClass } from "$lib/ui";
 
-  /** label | field | unit — one grid, so every row's field column lines up. Set inline:
-   *  Tailwind will not generate an arbitrary value containing a comma. */
-  const GRID = "grid-template-columns: auto minmax(0, 1fr) auto";
+  /** label | field | unit — one grid, so every row's field column lines up. Written as a
+   *  utility with underscores for the spaces; Tailwind 4 does generate arbitrary values that
+   *  contain commas (verified in Task 2 for the shell grid). */
+  const GRID = "grid-cols-[auto_minmax(0,1fr)_auto]";
   const LABEL = "text-right text-[11px] whitespace-nowrap text-muted";
   const UNIT = "w-4 text-[11px] text-muted";
 ```
@@ -1345,7 +1346,7 @@ Replace from `<aside class="inspector"` through `</aside>` with:
         </div>
       </section>
 
-      <section class="grid items-center gap-x-2 gap-y-2 border-t border-line pt-2" style={GRID}>
+      <section class="grid items-center gap-x-2 gap-y-2 border-t border-line pt-2 {GRID}">
         <label class="contents">
           <span class={LABEL}>Source in</span>
           <input
@@ -1411,7 +1412,7 @@ Replace from `<aside class="inspector"` through `</aside>` with:
         <span class={UNIT}></span>
       </section>
 
-      <section class="grid items-center gap-x-2 gap-y-2 border-t border-line pt-2" style={GRID}>
+      <section class="grid items-center gap-x-2 gap-y-2 border-t border-line pt-2 {GRID}">
         <h3 class="{HEADING} col-span-3">Transform</h3>
         <label class="contents">
           <span class={LABEL}>Scale</span>
