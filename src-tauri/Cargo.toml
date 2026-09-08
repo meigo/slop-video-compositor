@@ -1,6 +1,6 @@
 [package]
 name = "slop-video-compositor"
-version = "0.3.0"
+version = "0.4.0"
 description = "Desktop hard-cut video compositor: multi-track timeline, filmstrips, audio beds, reframe, export H.264+AAC MP4"
 authors = ["Meigo"]
 license = "MIT"
