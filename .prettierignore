@@ -6,3 +6,6 @@ package-lock.json
 docs
 temp
 .superpowers
+README.md
+.vscode
+src-tauri
