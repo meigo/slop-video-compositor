@@ -1429,18 +1429,18 @@
           class:scaling
           onpointerdown={onPointerDown}
         ></canvas>
-        <div class="frame-label mono" aria-hidden="true">{canvasW}×{canvasH}</div>
+        <div class="frame-label" aria-hidden="true">{canvasW}×{canvasH}</div>
       </div>
     </div>
   </div>
   <div class="view-hud">
     {#if viewZoom !== 1 || viewPanX !== 0 || viewPanY !== 0}
-      <span class="mono">{Math.round(viewZoom * 100)}%</span>
-      <button type="button" class="ghost fit-btn" onclick={resetViewport} title="Fit & center (double-click)">
+      <span class="hud-value">{Math.round(viewZoom * 100)}%</span>
+      <button type="button" class="fit-btn" onclick={resetViewport} title="Fit & center (double-click)">
         Fit
       </button>
     {:else}
-      <span class="mono muted-hud">fit</span>
+      <span class="hud-value hud-resting">fit</span>
     {/if}
   </div>
   <!-- Dual decoders: active free-runs, standby prefetches the next cut -->
@@ -1476,9 +1476,7 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    background: var(--color-ground);
     overflow: hidden;
     position: relative;
   }
@@ -1491,13 +1489,13 @@
     overflow: hidden;
     touch-action: none;
     cursor: grab;
-    /* Chrome outside the output frame — not pure black so the project rect reads clearly */
-    background-color: #1a1a1e;
+    /* Checkerboard outside the output frame so the project rect reads clearly. */
+    background-color: var(--color-ground);
     background-image:
-      linear-gradient(45deg, #222228 25%, transparent 25%),
-      linear-gradient(-45deg, #222228 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, #222228 75%),
-      linear-gradient(-45deg, transparent 75%, #222228 75%);
+      linear-gradient(45deg, var(--color-panel) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--color-panel) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--color-panel) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--color-panel) 75%);
     background-size: 16px 16px;
     background-position:
       0 0,
@@ -1516,7 +1514,6 @@
     top: 50%;
     transform-origin: center center;
     will-change: transform;
-    /* Lock box sizing so aspect-ratio + explicit size stay consistent */
     box-sizing: border-box;
   }
 
@@ -1525,34 +1522,68 @@
     width: 100%;
     height: 100%;
     box-sizing: border-box;
-    /* Clear “this is the export rectangle” chrome */
-    outline: 1px solid rgba(255, 255, 255, 0.55);
-    box-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.65),
-      0 8px 28px rgba(0, 0, 0, 0.45);
+    outline: 1px solid var(--color-raised);
+    /* The letterbox is content, not chrome: it stays black. */
     background: #000;
     overflow: hidden;
   }
 
-  .frame-label {
+  .frame-label,
+  .view-hud {
     position: absolute;
-    top: 0.3rem;
-    left: 0.35rem;
-    padding: 0.1rem 0.35rem;
-    border-radius: 3px;
-    background: rgba(0, 0, 0, 0.55);
-    color: rgba(255, 255, 255, 0.75);
-    font-size: 0.65rem;
-    letter-spacing: 0.02em;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--color-ground) 70%, transparent);
+    color: var(--color-muted);
+    font-size: 10px;
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .frame-label {
+    top: 4px;
+    left: 4px;
     pointer-events: none;
     z-index: 1;
+  }
+
+  .view-hud {
+    right: 6px;
+    bottom: 6px;
+    z-index: 2;
+  }
+
+  .hud-value {
+    min-width: 32px;
+    text-align: right;
+    color: var(--color-text);
+  }
+
+  .hud-resting {
+    min-width: auto;
+    color: var(--color-muted);
+  }
+
+  .fit-btn {
+    height: 20px;
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 10px;
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .fit-btn:hover {
+    background: var(--color-raised);
   }
 
   canvas {
     display: block;
     width: 100%;
     height: 100%;
-    /* Project pixels only — no letterbox stretch */
     object-fit: fill;
     background: #000;
     cursor: default;
@@ -1569,39 +1600,6 @@
 
   canvas.scaling {
     cursor: nwse-resize;
-  }
-
-  .view-hud {
-    position: absolute;
-    right: 0.5rem;
-    bottom: 0.45rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.2rem 0.35rem;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.55);
-    border: 1px solid var(--border);
-    font-size: 0.75rem;
-    color: var(--muted);
-    z-index: 2;
-  }
-
-  .view-hud .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    min-width: 2.5rem;
-    text-align: right;
-    color: var(--text);
-  }
-
-  .view-hud .muted-hud {
-    opacity: 0.7;
-    min-width: auto;
-  }
-
-  .fit-btn {
-    padding: 0.15em 0.45em;
-    font-size: 0.75rem;
   }
 
   /*
