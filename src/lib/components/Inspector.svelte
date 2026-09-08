@@ -11,7 +11,9 @@
   import type { Clip, SourceMeta } from "$lib/types";
   import { BORDERED_BTN, FIELD, HEADING, STRIP, toggleClass } from "$lib/ui";
 
-  /** label | field | unit — one grid, so every row's field column lines up. Written as a
+  /** label | field | unit — every field row in the panel sits in one grid container (the
+   *  Transform heading and its divider are full-width children inside it), so the label and
+   *  field columns line up across the whole panel, not just within a section. Written as a
    *  utility with underscores for the spaces; Tailwind 4 does generate arbitrary values that
    *  contain commas (verified in Task 2 for the shell grid). */
   const GRID = "grid-cols-[auto_minmax(0,1fr)_auto]";
@@ -105,7 +107,7 @@
         </div>
       </section>
 
-      <section class="grid items-center gap-x-2 gap-y-2 border-t border-line pt-2 {GRID}">
+      <section class="grid items-center gap-2 border-t border-line pt-2 {GRID}">
         <label class="contents">
           <span class={LABEL}>Source in</span>
           <input
@@ -169,9 +171,8 @@
           Mute
         </button>
         <span class={UNIT}></span>
-      </section>
 
-      <section class="grid items-center gap-x-2 gap-y-2 border-t border-line pt-2 {GRID}">
+        <div class="col-span-3 border-t border-line"></div>
         <h3 class="{HEADING} col-span-3">Transform</h3>
         <label class="contents">
           <span class={LABEL}>Scale</span>
