@@ -22,6 +22,7 @@
     MENU_PANEL,
     TEXT_BTN,
     markedBtnClass,
+    menuRadioClass,
     toggleClass,
   } from "$lib/ui";
 
@@ -89,9 +90,6 @@
   const trigger = (open: boolean): string =>
     `${CONTROL_H} gap-1 px-2 text-xs ` +
     (open ? "bg-raised text-text" : "text-muted hover:bg-raised hover:text-text");
-  /** `menuitemradio`: the checked item reads in accent. */
-  const radioItem = (checked: boolean): string =>
-    `${MENU_ITEM} ${checked ? "text-accent" : ""}`;
 
   type MenuId = "file" | "import" | "canvas" | null;
   let openMenu = $state<MenuId>(null);
@@ -251,7 +249,7 @@
           <div class="{HEADING} px-3 py-1">Place clips</div>
           <button
             type="button"
-            class={radioItem(importPlacement === "append")}
+            class={menuRadioClass(importPlacement === "append")}
             role="menuitemradio"
             aria-checked={importPlacement === "append"}
             title="Place each import after the last clip on the selected track"
@@ -264,7 +262,7 @@
           </button>
           <button
             type="button"
-            class={radioItem(importPlacement === "playhead")}
+            class={menuRadioClass(importPlacement === "playhead")}
             role="menuitemradio"
             aria-checked={importPlacement === "playhead"}
             title="Place imports at the current playhead time"
@@ -277,7 +275,7 @@
           </button>
           <button
             type="button"
-            class={radioItem(importPlacement === "new-tracks")}
+            class={menuRadioClass(importPlacement === "new-tracks")}
             role="menuitemradio"
             aria-checked={importPlacement === "new-tracks"}
             title="Create a new track for each imported file (⌘⇧I)"
