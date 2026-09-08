@@ -270,7 +270,11 @@
   });
 </script>
 
-<div class="shell legacy" class:resizing={resizingTimeline}>
+<div
+  class="legacy flex h-screen flex-col overflow-hidden bg-ground text-text {resizingTimeline
+    ? 'cursor-row-resize select-none'
+    : ''}"
+>
   {#if app.deps && !app.deps.ffmpeg}
     <MissingDeps deps={app.deps} onRecheck={() => void refreshDeps()} />
   {/if}
@@ -304,18 +308,11 @@
     }}
   />
 
-  <StatusLine
-    status={app.missingSources.length > 0
-      ? `${app.status} · ${app.missingSources.length} missing media`
-      : app.status}
-    hint={statusHint}
-    dirty={app.dirty}
-    projectPath={app.projectPath}
-    projectName={p.name}
-  />
-
-  <div class="main">
-    <section class="preview-col" aria-label="Preview">
+  <div
+    class="grid min-h-[120px] min-w-0 flex-1 max-[800px]:grid-cols-1"
+    style="grid-template-columns: minmax(0, 1.65fr) minmax(240px, 0.9fr)"
+  >
+    <section class="flex min-h-0 min-w-0 flex-col" aria-label="Preview">
       <Preview />
       <Transport
         playhead={app.playhead}
@@ -351,8 +348,7 @@
 
   <button
     type="button"
-    class="splitter"
-    class:active={resizingTimeline}
+    class="group flex h-2 w-full shrink-0 cursor-row-resize touch-none items-center justify-center border-y border-line bg-panel"
     aria-label="Resize timeline height ({app.timelineHeightPx} pixels)"
     title="Drag to resize timeline"
     onpointerdown={onSplitterPointerDown}
@@ -365,108 +361,25 @@
       }
     }}
   >
-    <span class="splitter-grip" aria-hidden="true"></span>
+    <span
+      class="h-0.5 w-9 rounded-full group-hover:bg-accent group-focus-visible:bg-accent {resizingTimeline
+        ? 'bg-accent'
+        : 'bg-line'}"
+      aria-hidden="true"
+    ></span>
   </button>
 
-  <div class="timeline-panel" style:height="{app.timelineHeightPx}px">
+  <div class="flex min-h-0 min-w-0 shrink-0 flex-col" style:height="{app.timelineHeightPx}px">
     <Timeline />
   </div>
+
+  <StatusLine
+    status={app.missingSources.length > 0
+      ? `${app.status} · ${app.missingSources.length} missing media`
+      : app.status}
+    hint={statusHint}
+    dirty={app.dirty}
+    projectPath={app.projectPath}
+    projectName={p.name}
+  />
 </div>
-
-<style>
-  .shell {
-    height: 100vh;
-    max-height: 100vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    padding: 0.65rem 0.85rem 0.65rem;
-    box-sizing: border-box;
-    /* Let toolbar menus stack above preview/status without being covered */
-    isolation: isolate;
-  }
-
-  .shell :global(header.toolbar) {
-    flex: 0 0 auto;
-    z-index: 40;
-  }
-
-  .shell.resizing {
-    cursor: row-resize;
-    user-select: none;
-  }
-
-  .main {
-    display: grid;
-    grid-template-columns: minmax(0, 1.65fr) minmax(240px, 0.9fr);
-    gap: 0.55rem;
-    flex: 1 1 auto;
-    min-height: 120px;
-    min-width: 0;
-  }
-
-  .preview-col {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-  }
-
-  .splitter {
-    flex: 0 0 8px;
-    margin: 0 -0.15rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: row-resize;
-    touch-action: none;
-    border-radius: 4px;
-    border: none;
-    padding: 0;
-    background: transparent;
-    color: inherit;
-    width: 100%;
-  }
-
-  .splitter:hover:not(:disabled) {
-    background: rgba(91, 140, 255, 0.12);
-  }
-
-  .splitter:hover,
-  .splitter.active,
-  .splitter:focus-visible {
-    background: rgba(91, 140, 255, 0.12);
-  }
-
-  .splitter:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-
-  .splitter-grip {
-    width: 36px;
-    height: 3px;
-    border-radius: 2px;
-    background: var(--border);
-  }
-
-  .splitter:hover .splitter-grip,
-  .splitter.active .splitter-grip {
-    background: var(--accent);
-  }
-
-  .timeline-panel {
-    flex: 0 0 auto;
-    min-height: 0;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  @media (max-width: 800px) {
-    .main {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>
