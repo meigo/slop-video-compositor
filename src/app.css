@@ -123,8 +123,7 @@ input[type="range"].slider::-moz-range-thumb {
   .toolbar button,
   .transport button,
   .inspector button,
-  .timeline button,
-  .preview-frame button {
+  .timeline button {
     border-radius: 6px;
     border: 1px solid transparent;
     padding: 0.4em 0.75em;
@@ -136,8 +135,7 @@ input[type="range"].slider::-moz-range-thumb {
   .toolbar button:disabled,
   .transport button:disabled,
   .inspector button:disabled,
-  .timeline button:disabled,
-  .preview-frame button:disabled {
+  .timeline button:disabled {
     background: var(--disabled);
     color: var(--muted);
     cursor: not-allowed;
@@ -145,8 +143,7 @@ input[type="range"].slider::-moz-range-thumb {
   .toolbar button.ghost,
   .transport button.ghost,
   .inspector button.ghost,
-  .timeline button.ghost,
-  .preview-frame button.ghost {
+  .timeline button.ghost {
     background: var(--surface-2);
     border-color: var(--border);
     color: var(--text);
@@ -162,10 +159,7 @@ input[type="range"].slider::-moz-range-thumb {
   .inspector input:not([type]),
   .timeline input[type="text"],
   .timeline input[type="number"],
-  .timeline input:not([type]),
-  .preview-frame input[type="text"],
-  .preview-frame input[type="number"],
-  .preview-frame input:not([type]) {
+  .timeline input:not([type]) {
     border-radius: 6px;
     border: 1px solid var(--border);
     padding: 0.35em 0.55em;

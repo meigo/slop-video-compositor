@@ -1570,9 +1570,12 @@
   .fit-btn {
     height: 20px;
     padding: 0 4px;
+    border: none;
     border-radius: 4px;
-    font-size: 10px;
+    background: transparent;
     color: var(--color-text);
+    font-size: 10px;
+    font-weight: normal;
     cursor: pointer;
   }
 
