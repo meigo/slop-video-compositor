@@ -5,7 +5,6 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Image from "@lucide/svelte/icons/image";
   import ImageOff from "@lucide/svelte/icons/image-off";
-  import Layers from "@lucide/svelte/icons/layers";
   import Maximize2 from "@lucide/svelte/icons/maximize-2";
   import Plus from "@lucide/svelte/icons/plus";
   import Music from "@lucide/svelte/icons/music";
@@ -26,7 +25,7 @@
     trimClipOut,
   } from "$lib/clips";
   import { clipColorCssVars } from "$lib/clipColor";
-  import { DIVIDER, FIELD, HEADING, TEXT_BTN, toggleClass, toggleSquareClass } from "$lib/ui";
+  import { BTN, DIVIDER, FIELD, toggleClass, toggleSquareClass } from "$lib/ui";
   import ClipFilmstrip from "$lib/components/ClipFilmstrip.svelte";
   import ClipWaveform from "$lib/components/ClipWaveform.svelte";
   import {
@@ -160,7 +159,6 @@
   const contentWidth = $derived(Math.ceil(endTime * pxPerSecond) + DURATION_HANDLE_PX);
   /** Highest priority (last array index) at top of UI. */
   const displayTracks = $derived([...p.tracks].reverse());
-  const clipCount = $derived(p.tracks.reduce((n, t) => n + t.clips.length, 0));
 
   $effect(() => {
     // Keep the number field in sync when duration changes elsewhere
@@ -712,7 +710,6 @@
   }
 
   const hasSelection = $derived(app.selectedClipIds.length > 0 || app.selectedClipId != null);
-  const markerCount = $derived((p.markers ?? []).length);
   const rangeActive = $derived(hasPlayRange());
   const bounds = $derived(playBounds());
 
@@ -798,88 +795,17 @@
 </script>
 
 <section class="flex h-full min-h-0 min-w-0 flex-col bg-ground" aria-label="Timeline">
-  <!-- Hand-typed near-copy of STRIP: deliberately uses `gap-2` rather than STRIP's `gap-1`, and
-       adds `overflow-x-auto` because this row overflows at ordinary window widths. The
-       `scrollbar-none` and the `::-webkit-scrollbar` rule below hide the scrollbar (a
-       classic, non-overlay scrollbar on Windows/WebView2 would otherwise take ~15px out of this
-       28px strip) while keeping it scrollable. -->
-  <div
-    class="scroll-strip flex h-7 shrink-0 scrollbar-none items-center gap-2 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
-  >
-    <h2 class="{HEADING} inline-flex items-center gap-1">
-      <Layers size={14} strokeWidth={2} aria-hidden="true" />
-      Timeline
-    </h2>
-    <span>
-      {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
-      · {clipCount} clip{clipCount === 1 ? "" : "s"}
-      · {markerCount} marker{markerCount === 1 ? "" : "s"}
-      · top = highest priority
-    </span>
-    <label
-      class="ml-2 inline-flex items-center gap-1"
-      title="Sequence end (program out). Values shorter than media trim clips past that time."
-    >
-      <span>Length</span>
-      <input
-        class="{FIELD} w-16"
-        type="number"
-        min="0"
-        step="0.1"
-        bind:value={durationInput}
-        onchange={applyDurationInput}
-        onkeydown={onDurationKey}
-        aria-label="Timeline length in seconds"
-      />
-      <span>s</span>
-      <span class="min-w-11 text-text tabular-nums">{formatTimestamp(seqDuration)}</span>
-    </label>
-    <div class="ml-auto flex shrink-0 items-center gap-1">
-      <label class="inline-flex items-center gap-1">
-        <ZoomIn size={14} strokeWidth={2} class="opacity-75" aria-hidden="true" />
-        <span>Zoom</span>
-        <input
-          type="range"
-          class="slider w-28"
-          style="--fill-from: 0%; --fill-to: {((pxPerSecond - MIN_PPS) / (MAX_PPS - MIN_PPS)) *
-            100}%"
-          min={MIN_PPS}
-          max={MAX_PPS}
-          step="1"
-          value={pxPerSecond}
-          oninput={onZoomInput}
-          aria-label="Timeline zoom pixels per second"
-        />
-        <span class="w-14 text-right tabular-nums">{Math.round(pxPerSecond)} px/s</span>
-      </label>
-      <button
-        type="button"
-        class={TEXT_BTN}
-        onclick={fitZoomToWidth}
-        title="Fit sequence to timeline width (100%)"
-        aria-label="Fit sequence to timeline width"
-      >
-        <Maximize2 size={14} strokeWidth={2} aria-hidden="true" />
-        <span>Fit</span>
-      </button>
-      <div class={DIVIDER} aria-hidden="true"></div>
-      <button
-        type="button"
-        class={TEXT_BTN}
-        onclick={onAddTrack}
-        title="Add video track"
-        aria-label="Add track"
-      >
-        <Plus size={16} strokeWidth={2} aria-hidden="true" />
-        <span>Track</span>
-      </button>
-    </div>
-  </div>
+  <!-- The region's heading, for heading navigation only: the strip below carries no visible
+       title, because "TIMELINE" plus a live count of tracks and clips only restated what the
+       tracks themselves already show. -->
+  <h2 class="sr-only">Timeline</h2>
 
-  <!-- Discoverable edit tools (keyboard shortcuts still work). -->
-  <!-- Hand-typed near-copy of STRIP: deliberately adds `overflow-x-auto` because this row
-       overflows at ordinary window widths. `scrollbar-none` and the `::-webkit-scrollbar`
-       rule below hide the scrollbar (a classic, non-overlay scrollbar on Windows/WebView2 would
+  <!-- The timeline's ONE strip. Every edit tool is icon-only: the status line echoes the hovered
+       control's `title`, so a label costs horizontal space and buys nothing. That is what frees
+       the width for Length, Zoom and Fit, which used to need a second strip of their own.
+       Hand-typed near-copy of STRIP: deliberately adds `overflow-x-auto` because this row can
+       still overflow on a narrow window. `scrollbar-none` and the `::-webkit-scrollbar` rule
+       below hide the scrollbar (a classic, non-overlay scrollbar on Windows/WebView2 would
        otherwise take ~15px out of this 28px strip) while keeping it scrollable. -->
   <div
     class="scroll-strip flex h-7 shrink-0 scrollbar-none items-center gap-1 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
@@ -889,22 +815,20 @@
     <div class="flex items-center gap-1" role="group" aria-label="Navigate">
       <button
         type="button"
-        class={TEXT_BTN}
+        class={BTN}
         onclick={() => seekPrevCut()}
         title="Previous cut or marker ([)"
         aria-label="Previous cut or marker"
       >
         <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
-        <span>Prev</span>
       </button>
       <button
         type="button"
-        class={TEXT_BTN}
+        class={BTN}
         onclick={() => seekNextCut()}
         title="Next cut or marker (])"
         aria-label="Next cut or marker"
       >
-        <span>Next</span>
         <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
@@ -912,29 +836,38 @@
     <div class="flex items-center gap-1" role="group" aria-label="Edit">
       <button
         type="button"
-        class={TEXT_BTN}
+        class={BTN}
         onclick={splitSelectedAtPlayhead}
         disabled={!app.selectedClipId}
         title="Split selected clip at playhead (S)"
         aria-label="Split clip at playhead"
       >
         <Scissors size={16} strokeWidth={2} aria-hidden="true" />
-        <span>Split</span>
       </button>
       <button
         type="button"
-        class={TEXT_BTN}
+        class={BTN}
         onclick={() => deleteSelectedClips()}
         disabled={!hasSelection}
         title="Delete selected clip(s) (Delete)"
         aria-label="Delete selected clips"
       >
         <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
-        <span>Delete</span>
+      </button>
+      <button
+        type="button"
+        class={BTN}
+        onclick={() => addMarkerAtPlayhead()}
+        title="Add marker at playhead (M)"
+        data-hint="Click a marker to seek, double-click to rename, Alt+click to remove"
+        aria-label="Add marker at playhead"
+      >
+        <BookmarkPlus size={16} strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
     <div class={DIVIDER} aria-hidden="true"></div>
     <div class="flex items-center gap-1" role="group" aria-label="Display">
+      <!-- Keeps its label: no icon reads as "filmstrips" without being decoded first. -->
       <button
         type="button"
         class={toggleClass(app.showFilmstrips)}
@@ -967,72 +900,112 @@
     </div>
     <div class={DIVIDER} aria-hidden="true"></div>
     <div class="flex items-center gap-1" role="group" aria-label="Play range">
-      <!-- warn: the play range is preview-only and never reaches the export. -->
+      <!-- warn: the play range is preview-only and never reaches the export. The letter IS the
+           keyboard shortcut, so it stays visible where other tools went icon-only. -->
       <button
         type="button"
-        class={toggleClass(app.playIn != null, "bg-warn text-ground")}
+        class={toggleSquareClass(app.playIn != null, "bg-warn text-ground")}
         onclick={() => setPlayInAtPlayhead()}
-        title="Set play-in at playhead (I) — preview only"
+        title="Set play-in at playhead (I) — preview only, never affects the export"
         aria-label="Set play in"
         aria-pressed={app.playIn != null}
       >
-        <span class="font-bold">I</span>
-        <span>In</span>
+        I
       </button>
       <button
         type="button"
-        class={toggleClass(app.playOut != null, "bg-warn text-ground")}
+        class={toggleSquareClass(app.playOut != null, "bg-warn text-ground")}
         onclick={() => setPlayOutAtPlayhead()}
-        title="Set play-out at playhead (O) — preview only"
+        title="Set play-out at playhead (O) — preview only, never affects the export"
         aria-label="Set play out"
         aria-pressed={app.playOut != null}
       >
-        <span class="font-bold">O</span>
-        <span>Out</span>
+        O
       </button>
       <button
         type="button"
-        class={TEXT_BTN}
+        class={BTN}
         onclick={() => clearPlayRange()}
         disabled={!rangeActive}
         title="Clear play range (Esc)"
         aria-label="Clear play range"
       >
         <X size={14} strokeWidth={2} aria-hidden="true" />
-        <span>Clear</span>
       </button>
       {#if rangeActive}
-        <span
-          class="tool-hint tabular-nums"
-          title="Preview plays only this range; export is unchanged"
-        >
+        <span class="tabular-nums" title="Preview plays only this range; export is unchanged">
           {formatTimestamp(bounds.start)}–{formatTimestamp(bounds.end)}
         </span>
       {/if}
     </div>
+
     <div class={DIVIDER} aria-hidden="true"></div>
-    <div class="flex items-center gap-1" role="group" aria-label="Markers">
+
+    <!-- Sequence and view controls, pushed right. These moved down from the header row that this
+         strip replaced. -->
+    <div class="ml-auto flex shrink-0 items-center gap-1">
+      <label
+        class="inline-flex items-center gap-1"
+        title="Sequence end (program out). Values shorter than media trim clips past that time."
+      >
+        <span>Length</span>
+        <input
+          class="{FIELD} w-16"
+          type="number"
+          min="0"
+          step="0.1"
+          bind:value={durationInput}
+          onchange={applyDurationInput}
+          onkeydown={onDurationKey}
+          aria-label="Timeline length in seconds"
+        />
+        <span>s</span>
+      </label>
+      <div class={DIVIDER} aria-hidden="true"></div>
+      <label class="inline-flex items-center gap-1" title="Timeline zoom">
+        <ZoomIn size={14} strokeWidth={2} class="opacity-75" aria-hidden="true" />
+        <input
+          type="range"
+          class="slider w-24"
+          style="--fill-from: 0%; --fill-to: {((pxPerSecond - MIN_PPS) / (MAX_PPS - MIN_PPS)) *
+            100}%"
+          min={MIN_PPS}
+          max={MAX_PPS}
+          step="1"
+          value={pxPerSecond}
+          oninput={onZoomInput}
+          aria-label="Timeline zoom pixels per second"
+        />
+        <span class="w-14 text-right tabular-nums">{Math.round(pxPerSecond)} px/s</span>
+      </label>
       <button
         type="button"
-        class={TEXT_BTN}
-        onclick={() => addMarkerAtPlayhead()}
-        title="Add marker at playhead (M) — click seek, double-click rename, Alt+click remove"
-        aria-label="Add marker at playhead"
+        class={BTN}
+        onclick={fitZoomToWidth}
+        title="Fit sequence to timeline width (100%)"
+        aria-label="Fit sequence to timeline width"
       >
-        <BookmarkPlus size={16} strokeWidth={2} aria-hidden="true" />
-        <span>Marker</span>
+        <Maximize2 size={14} strokeWidth={2} aria-hidden="true" />
       </button>
-      <span
-        class="tool-hint"
-        title="Markers are seek bookmarks (not exported). ⌥/Alt-drag duplicates clips."
-      >
-        dbl-click rename · ⌥-drag copy
-      </span>
     </div>
   </div>
 
   <div class="timeline-body">
-    <div class="labels" style:padding-top="{RULER_H}px">
+    <div class="labels">
+      <!-- A command that creates a thing belongs next to that thing. This cell is the space the
+           labels column already reserved to clear the ruler, so the button costs no height and
+           stays in one place however many tracks exist. -->
+      <button
+        type="button"
+        class="add-track"
+        style:height="{RULER_H}px"
+        onclick={onAddTrack}
+        title="Add video track"
+        aria-label="Add track"
+      >
+        <Plus size={12} strokeWidth={2} aria-hidden="true" />
+        <span>Track</span>
+      </button>
       {#each displayTracks as track (track.id)}
         <div
           class="label-row"
@@ -1415,6 +1388,25 @@
     left: 0;
   }
 
+  /* Sits in the cell the labels column reserves to clear the ruler, so it aligns with the ruler's
+     own bottom border and never moves as tracks come and go. */
+  .add-track {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border-bottom: 1px solid var(--color-line);
+    font-size: 10px;
+    color: var(--color-muted);
+    cursor: pointer;
+  }
+
+  .add-track:hover {
+    background: var(--color-raised);
+    color: var(--color-text);
+  }
+
   .label-row {
     display: flex;
     align-items: center;
@@ -1600,31 +1592,37 @@
     box-sizing: border-box;
   }
 
+  /* Markers are SAVED document state, so they are deliberately not amber: amber is reserved for
+     session-only state that never reaches the export, which is the in/out range. Sharing the
+     colour made a bookmark and a preview boundary read as the same kind of thing. */
   .marker::before {
     content: "";
     position: absolute;
     top: 0;
     bottom: 0;
     left: 7px;
-    width: 2px;
-    background: var(--color-warn);
-    opacity: 0.85;
+    width: 1px;
+    background: var(--color-text);
+    opacity: 0.5;
     pointer-events: none;
   }
 
   .marker:hover::before {
-    opacity: 1;
+    opacity: 0.9;
   }
 
+  /* 8px, matching the in/out wedges, but SYMMETRIC where those are half-wedges: the three
+     shapes at the top of the ruler differ by direction as well as colour, so they stay
+     distinguishable without relying on hue alone. */
   .marker-flag {
     position: relative;
     z-index: 1;
     flex: 0 0 auto;
-    width: 0;
-    height: 0;
-    border-left: 10px solid var(--color-warn);
-    border-right: 0 solid transparent;
-    border-bottom: 9px solid transparent;
+    margin-left: 3px;
+    width: 8px;
+    height: 8px;
+    background: var(--color-text);
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
     pointer-events: none;
   }
 
@@ -1642,7 +1640,7 @@
     font-weight: 600;
     line-height: 14px;
     color: var(--color-ground);
-    background: var(--color-warn);
+    background: var(--color-text);
     border-radius: 2px;
     pointer-events: none;
   }
@@ -1699,13 +1697,6 @@
 
   .play-io.out {
     clip-path: polygon(100% 0, 0 0, 100% 100%);
-  }
-
-  /* .tool-hint carries no base styling — the class survives purely so it can be hidden below. */
-  @media (max-width: 900px) {
-    .tool-hint {
-      display: none;
-    }
   }
 
   .lanes {
@@ -1911,15 +1902,17 @@
     background: var(--color-accent);
   }
 
+  /* The same 8px wedge language as the in/out markers, pointing left because this is where the
+     program ENDS — accent rather than amber, because a program out is saved and exported.
+     Visual only: the 10px-wide handle around it is what takes the drag. */
   .duration-handle-grip {
     position: absolute;
-    top: 3px;
-    left: 0;
-    width: 10px;
-    height: 16px;
-    border-radius: 2px;
+    top: 0;
+    left: -3px;
+    width: 8px;
+    height: 8px;
     background: var(--color-accent);
-    border: 1px solid var(--color-line);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
   }
 
   .duration-handle:focus-visible .duration-handle-grip {

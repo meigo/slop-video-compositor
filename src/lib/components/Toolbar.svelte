@@ -20,7 +20,6 @@
     HEADING,
     MENU_ITEM,
     MENU_PANEL,
-    TEXT_BTN,
     markedBtnClass,
     menuRadioClass,
     toggleClass,
@@ -164,7 +163,7 @@
 </script>
 
 <header
-  class="relative z-40 flex h-11 shrink-0 items-center gap-3 border-b border-line bg-panel px-2 text-text"
+  class="relative z-40 flex h-13 shrink-0 items-center gap-3 border-b border-line bg-panel px-2 text-text"
 >
   <!-- file -->
   <div class="flex items-center gap-1">
@@ -245,9 +244,14 @@
 
   <!-- import -->
   <div class="flex items-center gap-1">
-    <button type="button" class={TEXT_BTN} onclick={onImport} title="Import videos (⌘I)">
+    <button
+      type="button"
+      class={BTN}
+      onclick={onImport}
+      title="Import videos (⌘I)"
+      aria-label="Import videos"
+    >
       <Film size={ICON} strokeWidth={2} aria-hidden="true" />
-      <span>Import</span>
     </button>
     <div class="relative shrink-0" data-toolbar-menu>
       <button

@@ -50,9 +50,9 @@ export const toggleIconClass = (on: boolean, onClass = "bg-accent text-ground"):
   `${CONTROL_H} w-6 ` + (on ? onClass : "text-text hover:bg-raised");
 
 /** Single-letter toggle in a fixed 24px square (S / M / L). */
-export const toggleSquareClass = (on: boolean): string =>
+export const toggleSquareClass = (on: boolean, onClass = "bg-accent text-ground"): string =>
   `${CONTROL_H} w-6 text-xs font-bold ` +
-  (on ? "bg-accent text-ground" : "text-muted hover:bg-raised hover:text-text");
+  (on ? onClass : "text-muted hover:bg-raised hover:text-text");
 
 /** Icon button whose glyph is recoloured to show state (the dirty Save). One string: adding
  *  `text-accent` after BTN's `text-text` would leave the winner to Tailwind's emit order. */
