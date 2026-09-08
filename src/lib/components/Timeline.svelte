@@ -60,6 +60,7 @@
     projectDuration,
     setProjectDuration,
   } from "$lib/project";
+  import { draggedPlayRange } from "$lib/playRange";
   import { collectSnapTimes, DEFAULT_SNAP_THRESHOLD, snapClipStart, snapTime } from "$lib/snap";
   import { clamp, formatTimestamp } from "$lib/time";
   import { nextTrackRowSize, trackRowMetrics } from "$lib/trackRow";
@@ -85,6 +86,7 @@
     selectClipOnly,
     setPlayInAtPlayhead,
     setPlayOutAtPlayhead,
+    setPlayRangeLive,
     setMarkerTimeLive,
     setPlayhead,
     setPresentLive,
@@ -463,6 +465,66 @@
       t = snapTime(t, targets, Math.max(DEFAULT_SNAP_THRESHOLD, 8 / pxPerSecond));
     }
     setMarkerTimeLive(dragMarkerId, t);
+  }
+
+  // In/out are SESSION state, so unlike marker drags these commit nothing to history.
+  let dragIoEdge = $state<"in" | "out" | null>(null);
+  let ioOriginX = 0;
+  let ioStartT = 0;
+  let ioDidMove = $state(false);
+  let ioPointerId: number | null = null;
+
+  function onIoPointerDown(e: PointerEvent, edge: "in" | "out") {
+    // Keep the hit off the ruler scrub underneath.
+    e.stopPropagation();
+    if (dragKind || resizingDuration) return;
+
+    dragIoEdge = edge;
+    ioOriginX = e.clientX;
+    ioStartT = edge === "in" ? (app.playIn ?? 0) : (app.playOut ?? seqDuration);
+    ioDidMove = false;
+    ioPointerId = e.pointerId;
+
+    window.addEventListener("pointermove", onIoPointerMove);
+    window.addEventListener("pointerup", onIoPointerUp);
+    window.addEventListener("pointercancel", onIoPointerUp);
+  }
+
+  function onIoPointerMove(e: PointerEvent) {
+    if (!dragIoEdge) return;
+    if (ioPointerId !== null && e.pointerId !== ioPointerId) return;
+
+    const dx = e.clientX - ioOriginX;
+    if (!ioDidMove && Math.abs(dx) < 3) return;
+    ioDidMove = true;
+
+    // Same snap targets and Shift-to-free rule as marker and clip drags.
+    let t = Math.max(0, ioStartT + dx / pxPerSecond);
+    if (!e.shiftKey) {
+      const targets = collectSnapTimes(project(), { playhead: app.playhead });
+      t = snapTime(t, targets, Math.max(DEFAULT_SNAP_THRESHOLD, 8 / pxPerSecond));
+    }
+    const next = draggedPlayRange(dragIoEdge, t, app.playIn, app.playOut, seqDuration);
+    setPlayRangeLive(next.playIn, next.playOut);
+  }
+
+  function onIoPointerUp(e: PointerEvent) {
+    if (!dragIoEdge) return;
+    if (ioPointerId !== null && e.pointerId !== ioPointerId) return;
+
+    const edge = dragIoEdge;
+    const moved = ioDidMove;
+
+    window.removeEventListener("pointermove", onIoPointerMove);
+    window.removeEventListener("pointerup", onIoPointerUp);
+    window.removeEventListener("pointercancel", onIoPointerUp);
+    dragIoEdge = null;
+    ioDidMove = false;
+    ioPointerId = null;
+
+    if (!moved) return;
+    const at = edge === "in" ? app.playIn : app.playOut;
+    app.status = `Play-${edge} ${at == null ? "cleared" : formatTimestamp(at)}`;
   }
 
   function onMarkerPointerUp(e: PointerEvent) {
@@ -1170,18 +1232,32 @@
               <!-- Asymmetric half-wedges, so they differ from the playhead head in SHAPE: red on
                    amber is the worst pair for the common colour blindnesses. -->
               {#if app.playIn != null}
-                <div
-                  class="play-io in"
-                  style:left="{bounds.start * pxPerSecond}px"
-                  aria-hidden="true"
-                ></div>
+                <button
+                  type="button"
+                  class="io-grab"
+                  class:dragging={dragIoEdge === "in" && ioDidMove}
+                  style:left="{bounds.start * pxPerSecond - 6}px"
+                  title="Play-in {formatTimestamp(bounds.start)} — drag to move (preview only)"
+                  data-hint="Drag to move the play-in (Shift for free)"
+                  aria-label="Play-in at {formatTimestamp(bounds.start)}"
+                  onpointerdown={(e) => onIoPointerDown(e, "in")}
+                >
+                  <span class="io-wedge in" aria-hidden="true"></span>
+                </button>
               {/if}
               {#if app.playOut != null}
-                <div
-                  class="play-io out"
-                  style:left="{bounds.end * pxPerSecond - 8}px"
-                  aria-hidden="true"
-                ></div>
+                <button
+                  type="button"
+                  class="io-grab"
+                  class:dragging={dragIoEdge === "out" && ioDidMove}
+                  style:left="{bounds.end * pxPerSecond - 14}px"
+                  title="Play-out {formatTimestamp(bounds.end)} — drag to move (preview only)"
+                  data-hint="Drag to move the play-out (Shift for free)"
+                  aria-label="Play-out at {formatTimestamp(bounds.end)}"
+                  onpointerdown={(e) => onIoPointerDown(e, "out")}
+                >
+                  <span class="io-wedge out" aria-hidden="true"></span>
+                </button>
               {/if}
             {/if}
             {#each p.markers ?? [] as marker (marker.id)}
@@ -1786,21 +1862,41 @@
     z-index: 1;
   }
 
-  .play-io {
+  /* clip-path clips the hit area too, so the grab target cannot be the wedge itself: the
+     button stays an unclipped rectangle and the wedge is a child, drawn exactly where the
+     old .play-io sat (grab left + 6px). */
+  .io-grab {
     position: absolute;
     top: 0;
+    width: 20px;
+    height: 14px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: ew-resize;
+    z-index: 3;
+  }
+
+  .io-wedge {
+    position: absolute;
+    top: 0;
+    left: 6px;
     width: 8px;
     height: 8px;
     background: var(--color-warn);
     pointer-events: none;
-    z-index: 2;
   }
 
-  .play-io.in {
+  .io-grab:hover .io-wedge,
+  .io-grab.dragging .io-wedge {
+    background: var(--color-text);
+  }
+
+  .io-wedge.in {
     clip-path: polygon(0 0, 100% 0, 0 100%);
   }
 
-  .play-io.out {
+  .io-wedge.out {
     clip-path: polygon(100% 0, 0 0, 100% 100%);
   }
 

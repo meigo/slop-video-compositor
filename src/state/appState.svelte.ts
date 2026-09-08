@@ -139,6 +139,12 @@ export function selectedClip(): Clip | null {
  * Source→colour for every clip in the project. Assigned across the whole set at once so
  * two files never share a slot; callers hold the result rather than calling per clip.
  */
+/** Move the play range during a drag. Session state, so no history entry — see setPlayInAtPlayhead. */
+export function setPlayRangeLive(inT: number | null, outT: number | null) {
+  app.playIn = inT;
+  app.playOut = outT;
+}
+
 export function projectClipColors(): Map<string, ClipColor> {
   return clipColorsForPaths(project().tracks.flatMap((t) => t.clips.map((c) => c.sourcePath)));
 }

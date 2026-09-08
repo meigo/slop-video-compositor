@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { effectivePlayBounds, hasExplicitPlayRange, normalizePlayRange } from "./playRange";
+import {
+  draggedPlayRange,
+  effectivePlayBounds,
+  hasExplicitPlayRange,
+  normalizePlayRange,
+} from "./playRange";
 
 describe("normalizePlayRange", () => {
   it("orders and clamps into the sequence", () => {
@@ -33,5 +38,48 @@ describe("hasExplicitPlayRange", () => {
     expect(hasExplicitPlayRange(null, null)).toBe(false);
     expect(hasExplicitPlayRange(1, null)).toBe(true);
     expect(hasExplicitPlayRange(null, 2)).toBe(true);
+  });
+});
+
+describe("draggedPlayRange", () => {
+  it("moves the dragged in point and leaves out alone", () => {
+    expect(draggedPlayRange("in", 2, 1, 8, 20)).toEqual({ playIn: 2, playOut: 8 });
+  });
+
+  it("moves the dragged out point and leaves in alone", () => {
+    expect(draggedPlayRange("out", 9, 1, 8, 20)).toEqual({ playIn: 1, playOut: 9 });
+  });
+
+  it("stops the in point short of out rather than swapping the handles", () => {
+    // Dragging in past out must not flip which handle is under the cursor.
+    const r = draggedPlayRange("in", 12, 1, 8, 20);
+    expect(r.playOut).toBe(8);
+    expect(r.playIn).toBeCloseTo(8 - 1 / 30, 6);
+  });
+
+  it("stops the out point short of in rather than swapping the handles", () => {
+    const r = draggedPlayRange("out", 0, 5, 8, 20);
+    expect(r.playIn).toBe(5);
+    expect(r.playOut).toBeCloseTo(5 + 1 / 30, 6);
+  });
+
+  it("clamps the in point at the sequence start", () => {
+    expect(draggedPlayRange("in", -4, 1, 8, 20).playIn).toBe(0);
+  });
+
+  it("clamps the out point at the sequence end", () => {
+    expect(draggedPlayRange("out", 99, 1, 8, 20).playOut).toBe(20);
+  });
+
+  it("clamps against the sequence end when the other edge is unset", () => {
+    const r = draggedPlayRange("in", 99, 1, null, 20);
+    expect(r.playOut).toBeNull();
+    expect(r.playIn).toBeCloseTo(20 - 1 / 30, 6);
+  });
+
+  it("clamps against the sequence start when in is unset", () => {
+    const r = draggedPlayRange("out", -5, null, 8, 20);
+    expect(r.playIn).toBeNull();
+    expect(r.playOut).toBeCloseTo(1 / 30, 6);
   });
 });
