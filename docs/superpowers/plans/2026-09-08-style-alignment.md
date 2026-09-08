@@ -376,8 +376,15 @@ export const TEXT_BTN = `${CONTROL_H} gap-1 px-2 text-xs whitespace-nowrap text-
 /** 1px rule between toolbar groups. Whitespace alone reads as accidental at this size. */
 export const DIVIDER = "mx-1 h-5 w-px shrink-0 bg-line";
 
-export const MENU_ITEM =
-  "flex w-full items-center gap-2 px-3 py-1 text-left text-xs whitespace-nowrap text-text hover:bg-raised";
+/** Menu row without a text colour, so a caller can state its own in one branch. */
+const MENU_ITEM_BASE =
+  "flex w-full items-center gap-2 px-3 py-1 text-left text-xs whitespace-nowrap hover:bg-raised";
+export const MENU_ITEM = `${MENU_ITEM_BASE} text-text`;
+/** A `menuitemradio` row: the checked one reads in accent. Built as ONE string — appending
+ *  `text-accent` to MENU_ITEM would put two colour utilities in one class attribute, and the
+ *  winner would be Tailwind's emit order rather than the markup. */
+export const menuRadioClass = (checked: boolean): string =>
+  `${MENU_ITEM_BASE} ` + (checked ? "text-accent" : "text-text");
 
 /** Dropdown surface. Position (`left-0` / `right-0`) is added by the caller. */
 export const MENU_PANEL =
@@ -406,9 +413,10 @@ export const markedBtnClass = (marked: boolean): string =>
     : BTN;
 
 /** Inspector / bar input. `raised`, never `panel`: a panel-coloured field is invisible on a
- *  panel. */
+ *  panel. Width is the CALLER's — FIELD must not set one, or a caller appending `w-16` puts two
+ *  width utilities in one string and emit order picks the winner. */
 export const FIELD =
-  "h-6 w-full min-w-0 rounded bg-raised px-1 text-right text-xs text-text tabular-nums";
+  "h-6 min-w-0 rounded bg-raised px-1 text-right text-xs text-text tabular-nums";
 
 /** Bordered action button for panels (Relink, Reveal, Reset, Recheck). */
 export const BORDERED_BTN =
@@ -1350,7 +1358,7 @@ Replace from `<aside class="inspector"` through `</aside>` with:
         <label class="contents">
           <span class={LABEL}>Source in</span>
           <input
-            class={FIELD}
+            class="{FIELD} w-full"
             type="number"
             step="0.01"
             min="0"
@@ -1362,7 +1370,7 @@ Replace from `<aside class="inspector"` through `</aside>` with:
         <label class="contents">
           <span class={LABEL}>Source out</span>
           <input
-            class={FIELD}
+            class="{FIELD} w-full"
             type="number"
             step="0.01"
             min="0"
@@ -1374,7 +1382,7 @@ Replace from `<aside class="inspector"` through `</aside>` with:
         <label class="contents">
           <span class={LABEL}>Timeline start</span>
           <input
-            class={FIELD}
+            class="{FIELD} w-full"
             type="number"
             step="0.01"
             min="0"
@@ -1417,7 +1425,7 @@ Replace from `<aside class="inspector"` through `</aside>` with:
         <label class="contents">
           <span class={LABEL}>Scale</span>
           <input
-            class={FIELD}
+            class="{FIELD} w-full"
             type="number"
             step="0.05"
             min="0.05"
@@ -1430,7 +1438,7 @@ Replace from `<aside class="inspector"` through `</aside>` with:
         <label class="contents">
           <span class={LABEL}>X</span>
           <input
-            class={FIELD}
+            class="{FIELD} w-full"
             type="number"
             step="1"
             value={roundTo(clip.transform.x, 0)}
@@ -1441,7 +1449,7 @@ Replace from `<aside class="inspector"` through `</aside>` with:
         <label class="contents">
           <span class={LABEL}>Y</span>
           <input
-            class={FIELD}
+            class="{FIELD} w-full"
             type="number"
             step="1"
             value={roundTo(clip.transform.y, 0)}
