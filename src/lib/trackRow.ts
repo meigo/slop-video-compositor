@@ -44,3 +44,13 @@ export function trackRowMetrics(size: TrackRowSize): TrackRowMetrics {
 export function isTrackRowSize(v: unknown): v is TrackRowSize {
   return v === "s" || v === "m" || v === "l";
 }
+
+/** Cycle order for the single row-height button: compact, default, tall, back to compact. */
+const ROW_SIZE_CYCLE: readonly TrackRowSize[] = ["s", "m", "l"];
+
+/** The next size in the cycle. One button that steps through the three beats three buttons that
+ *  each set one, both in width and in matching slop-audio-editor's own row-height control. */
+export function nextTrackRowSize(size: TrackRowSize): TrackRowSize {
+  const i = ROW_SIZE_CYCLE.indexOf(size);
+  return ROW_SIZE_CYCLE[(i + 1) % ROW_SIZE_CYCLE.length]!;
+}

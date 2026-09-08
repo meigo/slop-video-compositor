@@ -3,7 +3,9 @@ import {
   CLIP_VERTICAL_INSET,
   DEFAULT_TRACK_ROW_SIZE,
   isTrackRowSize,
+  nextTrackRowSize,
   trackRowMetrics,
+  type TrackRowSize,
 } from "./trackRow";
 
 describe("trackRowMetrics", () => {
@@ -26,5 +28,19 @@ describe("isTrackRowSize", () => {
     expect(isTrackRowSize("s")).toBe(true);
     expect(isTrackRowSize("x")).toBe(false);
     expect(isTrackRowSize(null)).toBe(false);
+  });
+});
+
+describe("nextTrackRowSize", () => {
+  it("cycles s to m to l and back to s", () => {
+    expect(nextTrackRowSize("s")).toBe("m");
+    expect(nextTrackRowSize("m")).toBe("l");
+    expect(nextTrackRowSize("l")).toBe("s");
+  });
+
+  it("returns to the start after one full round", () => {
+    let size: TrackRowSize = "s";
+    for (let i = 0; i < 3; i++) size = nextTrackRowSize(size);
+    expect(size).toBe("s");
   });
 });

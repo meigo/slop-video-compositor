@@ -7,6 +7,9 @@
   import ImageOff from "@lucide/svelte/icons/image-off";
   import Maximize2 from "@lucide/svelte/icons/maximize-2";
   import Plus from "@lucide/svelte/icons/plus";
+  import Rows2 from "@lucide/svelte/icons/rows-2";
+  import Rows3 from "@lucide/svelte/icons/rows-3";
+  import Rows4 from "@lucide/svelte/icons/rows-4";
   import Music from "@lucide/svelte/icons/music";
   import Scissors from "@lucide/svelte/icons/scissors";
   import Trash2 from "@lucide/svelte/icons/trash-2";
@@ -57,7 +60,7 @@
   } from "$lib/project";
   import { collectSnapTimes, DEFAULT_SNAP_THRESHOLD, snapClipStart, snapTime } from "$lib/snap";
   import { clamp, formatTimestamp } from "$lib/time";
-  import { trackRowMetrics, type TrackRowSize } from "$lib/trackRow";
+  import { nextTrackRowSize, trackRowMetrics } from "$lib/trackRow";
   import type { Project } from "$lib/types";
   import {
     addMarkerAtPlayhead,
@@ -976,18 +979,23 @@
         {/if}
         <span>Thumbs</span>
       </button>
-      {#each ["s", "m", "l"] as size (size)}
-        <button
-          type="button"
-          class={toggleSquareClass(app.trackRowSize === size)}
-          onclick={() => setTrackRowSize(size as TrackRowSize)}
-          title={trackRowMetrics(size as TrackRowSize).title}
-          aria-label={trackRowMetrics(size as TrackRowSize).title}
-          aria-pressed={app.trackRowSize === size}
-        >
-          {trackRowMetrics(size as TrackRowSize).label}
-        </button>
-      {/each}
+      <!-- One button that steps s -> m -> l rather than three that each set one: the icon shows
+           how many rows fit, so the current size is readable without a pressed state. -->
+      <button
+        type="button"
+        class={BTN}
+        onclick={() => setTrackRowSize(nextTrackRowSize(app.trackRowSize))}
+        title="{trackRowMetrics(app.trackRowSize).title} — click for the next size"
+        aria-label="Track height: {trackRowMetrics(app.trackRowSize).title}"
+      >
+        {#if app.trackRowSize === "s"}
+          <Rows4 size={16} strokeWidth={2} aria-hidden="true" />
+        {:else if app.trackRowSize === "m"}
+          <Rows3 size={16} strokeWidth={2} aria-hidden="true" />
+        {:else}
+          <Rows2 size={16} strokeWidth={2} aria-hidden="true" />
+        {/if}
+      </button>
     </div>
     <div class={DIVIDER} aria-hidden="true"></div>
     <div class="flex items-center gap-1" role="group" aria-label="Play range">
@@ -1023,11 +1031,6 @@
       >
         <X size={14} strokeWidth={2} aria-hidden="true" />
       </button>
-      {#if rangeActive}
-        <span class="tabular-nums" title="Preview plays only this range; export is unchanged">
-          {formatTimestamp(bounds.start)}–{formatTimestamp(bounds.end)}
-        </span>
-      {/if}
     </div>
 
     <div class={DIVIDER} aria-hidden="true"></div>
@@ -1458,7 +1461,9 @@
 
   .labels {
     flex: 0 0 auto;
-    width: 52px;
+    /* 72, not the old 52: the column now also holds the Add track button, and at 52 the label and
+       a solo badge had no room to sit beside each other. */
+    width: 72px;
     border-right: 1px solid var(--color-line);
     background: var(--color-panel);
     z-index: 2;
