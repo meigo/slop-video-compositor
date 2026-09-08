@@ -1677,8 +1677,7 @@
     width: max-content;
     min-width: 24px;
     max-width: 96px;
-    margin-left: -8px;
-    padding: 24px 4px 0 3px;
+    padding: 26px 4px 0 0;
     border: none;
     background: transparent;
     cursor: grab;
@@ -1695,7 +1694,7 @@
     position: absolute;
     top: 0;
     bottom: 20px;
-    left: 7px;
+    left: 0;
     width: 1px;
     background: var(--color-text);
     opacity: 0.5;
@@ -1706,16 +1705,17 @@
     opacity: 0.9;
   }
 
-  /* 8px, matching the in/out wedges, but SYMMETRIC where those are half-wedges: the three
-     shapes at the top of the ruler differ by direction as well as colour, so they stay
-     distinguishable without relying on hue alone. */
+  /* The arrow's APEX is the marker's time: it sits on the hairline, and the label's left edge
+     lines up on the same vertical, so all three parts reference one x.
+     8 wide by 4 tall, so half the width equals the height and the point is a right angle — the
+     same rule the playhead's head follows, at a smaller size. */
   .marker-flag {
     position: relative;
     z-index: 1;
     flex: 0 0 auto;
-    margin-left: 3px;
+    margin-left: -4px;
     width: 8px;
-    height: 8px;
+    height: 4px;
     background: var(--color-text);
     clip-path: polygon(0 0, 100% 0, 50% 100%);
     pointer-events: none;
@@ -1726,7 +1726,6 @@
     z-index: 1;
     max-width: 80px;
     margin-top: 1px;
-    margin-left: 1px;
     padding: 0 4px;
     overflow: hidden;
     text-overflow: ellipsis;
