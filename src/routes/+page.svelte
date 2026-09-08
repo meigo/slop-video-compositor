@@ -309,8 +309,7 @@
   />
 
   <div
-    class="grid min-h-[120px] min-w-0 flex-1 max-[800px]:grid-cols-1"
-    style="grid-template-columns: minmax(0, 1.65fr) minmax(240px, 0.9fr)"
+    class="grid min-h-[120px] min-w-0 flex-1 grid-cols-[minmax(0,1.65fr)_minmax(240px,0.9fr)] max-[800px]:grid-cols-1"
   >
     <section class="flex min-h-0 min-w-0 flex-col" aria-label="Preview">
       <Preview />
