@@ -17,6 +17,9 @@ pub struct AppSettings {
     /// Track row height preset: "s" | "m" | "l".
     #[serde(default)]
     pub track_row_size: Option<String>,
+    /// Inspector panel width in CSS pixels (UI preference).
+    #[serde(default)]
+    pub inspector_width_px: Option<u32>,
 }
 
 impl Default for AppSettings {
@@ -27,6 +30,7 @@ impl Default for AppSettings {
             timeline_height_px: None,
             show_filmstrips: None,
             track_row_size: None,
+            inspector_width_px: None,
         }
     }
 }

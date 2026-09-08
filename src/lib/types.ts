@@ -60,6 +60,8 @@ export type AppSettings = {
   show_filmstrips?: boolean | null;
   /** Track row height preset: "s" | "m" | "l". */
   track_row_size?: string | null;
+  /** Inspector panel width in CSS pixels (UI preference). */
+  inspector_width_px?: number | null;
 };
 
 /** Wire shape from Rust `probe_media` (no path; caller attaches it). */

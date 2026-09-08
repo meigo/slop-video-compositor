@@ -3,6 +3,7 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import MissingDeps from "$lib/components/MissingDeps.svelte";
   import Preview from "$lib/components/Preview.svelte";
+  import { clampInspectorWidth, resizedInspectorWidth } from "$lib/panelLayout";
   import StatusLine from "$lib/components/StatusLine.svelte";
   import Timeline from "$lib/components/Timeline.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
@@ -46,6 +47,7 @@
     setPlayInAtPlayhead,
     setPlayOutAtPlayhead,
     setPlayhead,
+    setInspectorWidth,
     setTimelineHeight,
     stepPlayheadFrames,
     stepPlayheadSeconds,
@@ -95,6 +97,9 @@
   }
 
   let resizingTimeline = $state(false);
+  let resizingInspector = $state(false);
+  let inspectorGripStartW = 0;
+  let inspectorGripStartX = 0;
   let resizeStartY = 0;
   let resizeStartH = 0;
 
@@ -251,8 +256,43 @@
     setTimelineHeight(app.timelineHeightPx, true);
   }
 
+  function onInspectorGripPointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    resizingInspector = true;
+    inspectorGripStartX = e.clientX;
+    inspectorGripStartW = app.inspectorWidthPx;
+    window.addEventListener("pointermove", onInspectorGripPointerMove);
+    window.addEventListener("pointerup", onInspectorGripPointerUp);
+    window.addEventListener("pointercancel", onInspectorGripPointerUp);
+  }
+
+  function onInspectorGripPointerMove(e: PointerEvent) {
+    if (!resizingInspector) return;
+    // Recomputed from the press each time rather than accumulated, so the panel edge cannot
+    // drift away from the pointer over a long drag.
+    app.inspectorWidthPx = resizedInspectorWidth(
+      inspectorGripStartW,
+      inspectorGripStartX,
+      e.clientX,
+      window.innerWidth,
+    );
+  }
+
+  function onInspectorGripPointerUp() {
+    if (!resizingInspector) return;
+    resizingInspector = false;
+    window.removeEventListener("pointermove", onInspectorGripPointerMove);
+    window.removeEventListener("pointerup", onInspectorGripPointerUp);
+    window.removeEventListener("pointercancel", onInspectorGripPointerUp);
+    // One write to disk per drag, on release.
+    setInspectorWidth(app.inspectorWidthPx, true);
+  }
+
   function onWindowResize() {
     app.timelineHeightPx = clampTimelineHeight(app.timelineHeightPx);
+    // A window that shrank below twice the panel width has to give the panel back some room.
+    app.inspectorWidthPx = clampInspectorWidth(app.inspectorWidthPx, window.innerWidth);
   }
 
   onMount(() => {
@@ -309,7 +349,8 @@
   />
 
   <div
-    class="grid min-h-[120px] min-w-0 flex-1 grid-cols-[minmax(0,1.65fr)_minmax(240px,0.9fr)] max-[800px]:grid-cols-1"
+    class="grid min-h-[120px] min-w-0 flex-1 grid-cols-[minmax(0,1fr)_var(--inspector-w)] max-[800px]:grid-cols-1"
+    style="--inspector-w: {app.inspectorWidthPx}px"
   >
     <section class="flex min-h-0 min-w-0 flex-col" aria-label="Preview">
       <Preview />
@@ -333,21 +374,46 @@
       />
     </section>
 
-    <Inspector
-      {clip}
-      {meta}
-      {basename}
-      {truncateMiddle}
-      onUpdate={updateSelectedClipFields}
-      onResetTransform={resetSelectedTransform}
-      onRelink={() => void relinkSelected()}
-      onReveal={() => void revealSelectedSource()}
-    />
+    <div class="relative flex min-h-0 min-w-0 flex-col">
+      <!-- An 8px grab strip straddling the panel's left border, the way slop-audio-editor's side
+           panel resizes. Absolute so it costs the grid no column of its own. -->
+      <button
+        type="button"
+        class="group absolute inset-y-0 -left-1 z-10 w-2 shrink-0 cursor-ew-resize touch-none max-[800px]:hidden"
+        aria-label="Resize inspector ({app.inspectorWidthPx} pixels wide)"
+        title="Drag to resize the inspector"
+        onpointerdown={onInspectorGripPointerDown}
+        onkeydown={(e) => {
+          if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+            e.preventDefault();
+            const step = e.shiftKey ? 24 : 8;
+            setInspectorWidth(app.inspectorWidthPx + (e.key === "ArrowLeft" ? step : -step));
+          }
+        }}
+      >
+        <span
+          class="mx-auto block h-9 w-0.5 rounded-full group-hover:bg-accent group-focus-visible:bg-accent {resizingInspector
+            ? 'bg-accent'
+            : 'bg-transparent'}"
+          aria-hidden="true"
+        ></span>
+      </button>
+      <Inspector
+        {clip}
+        {meta}
+        {basename}
+        {truncateMiddle}
+        onUpdate={updateSelectedClipFields}
+        onResetTransform={resetSelectedTransform}
+        onRelink={() => void relinkSelected()}
+        onReveal={() => void revealSelectedSource()}
+      />
+    </div>
   </div>
 
   <button
     type="button"
-    class="group flex h-2 w-full shrink-0 cursor-row-resize touch-none items-center justify-center border-y border-line bg-panel"
+    class="group flex h-2.5 w-full shrink-0 cursor-row-resize touch-none items-center justify-center border-y border-line bg-ground"
     aria-label="Resize timeline height ({app.timelineHeightPx} pixels)"
     title="Drag to resize timeline"
     onpointerdown={onSplitterPointerDown}

@@ -60,6 +60,7 @@ import {
   writeProjectFile,
   writeTextFile,
 } from "$lib/tauri";
+import { DEFAULT_INSPECTOR_WIDTH, clampInspectorWidth } from "$lib/panelLayout";
 import type { AppSettings, Clip, ClipTransform, DepsStatus, Project, SourceMeta } from "$lib/types";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -110,6 +111,7 @@ export const app = $state({
   lastExportDir: null as string | null,
   /** Timeline panel height (px). Default applied in the shell layout. */
   timelineHeightPx: 200,
+  inspectorWidthPx: DEFAULT_INSPECTOR_WIDTH,
   /** Where multi-import places clips. */
   importPlacement: "append" as ImportPlacement,
   /** Clipboard for copy/paste (clip bodies without id; may be multi). */
@@ -1065,6 +1067,7 @@ async function persistSettings() {
       last_export_dir: app.lastExportDir,
       last_project_dir: app.lastProjectDir,
       timeline_height_px: Math.round(app.timelineHeightPx),
+      inspector_width_px: Math.round(app.inspectorWidthPx),
       show_filmstrips: app.showFilmstrips,
       track_row_size: app.trackRowSize,
     };
@@ -1084,6 +1087,11 @@ export function clampTimelineHeight(px: number): number {
 }
 
 /** Update timeline panel height and persist (debounced by callers if needed). */
+export function setInspectorWidth(px: number, persist = true) {
+  app.inspectorWidthPx = clampInspectorWidth(px, window.innerWidth);
+  if (persist) void persistSettings();
+}
+
 export function setTimelineHeight(px: number, persist = true) {
   app.timelineHeightPx = clampTimelineHeight(px);
   if (persist) void persistSettings();
@@ -1104,6 +1112,13 @@ export async function initApp() {
     }
     if (typeof settings.show_filmstrips === "boolean") {
       app.showFilmstrips = settings.show_filmstrips;
+    }
+    if (
+      settings.inspector_width_px != null &&
+      Number.isFinite(settings.inspector_width_px) &&
+      settings.inspector_width_px > 0
+    ) {
+      app.inspectorWidthPx = clampInspectorWidth(settings.inspector_width_px, window.innerWidth);
     }
     if (isTrackRowSize(settings.track_row_size)) {
       app.trackRowSize = settings.track_row_size;
