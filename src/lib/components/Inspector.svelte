@@ -54,7 +54,7 @@
 </script>
 
 <aside class="flex min-h-0 min-w-0 flex-col border-l border-line bg-panel" aria-label="Inspector">
-  <div class="{STRIP} border-b">Inspector</div>
+  <h2 class="{STRIP} border-b">Inspector</h2>
 
   <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-2 text-xs">
     {#if !clip}

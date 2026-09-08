@@ -47,6 +47,8 @@
   const ICON = 16;
 </script>
 
+<!-- Hand-typed near-copy of STRIP: deliberately drops STRIP's `text-[11px] text-muted`, or the
+     `text-sm` time readout inside this bar would inherit muted grey. -->
 <div class="flex h-7 shrink-0 items-center gap-1 border-t border-line bg-panel px-2">
   {#if onHome}
     <button

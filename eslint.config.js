@@ -82,6 +82,9 @@ export default tseslint.config(
     },
   },
   {
+    // src/app.html is ignored because the better-tailwindcss block's `**/*.html` glob above
+    // otherwise picks it up; it's a SvelteKit template, not valid JS, and fatally parse-errors
+    // the lint run.
     ignores: ["build/", ".svelte-kit/", "src-tauri/", "src/app.html"],
   },
 );

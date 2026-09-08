@@ -28,6 +28,8 @@
   const showHint = $derived(!!hint && !isError && hint.trim().length > 0);
 </script>
 
+<!-- Hand-typed near-copy of STRIP: deliberately uses `gap-2 px-3` rather than STRIP's
+     `gap-1 px-2`. -->
 <div
   class="flex h-7 shrink-0 items-center gap-2 border-t border-line bg-panel px-3 text-[11px] text-muted"
   role="status"

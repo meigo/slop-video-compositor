@@ -82,7 +82,9 @@ Semantic assignment in the compositor:
 
 - **accent** — saved document state and selection: selected clip outline, selected track bar,
   Thumbs / S / M / L toggles, Loop, canvas presets, program-out handle, Mute clip, Export button,
-  dirty Save glyph, active menu radio.
+  dirty Save glyph, active menu radio. Exception (see §9): the status line's hint icon is also
+  `text-accent`, marking an informational affordance rather than state — it is chrome, not
+  document state or selection.
 - **warn** — session-only state that never reaches the export: In / Out toggles, play-range lines,
   wedges and wash, transport mute, solo, program-out preview-trim, and (by decision, see §7) the
   named markers.
@@ -196,8 +198,9 @@ Prev, Next (`TEXT_BTN`) | Split, Delete (`TEXT_BTN`, disabled when nothing selec
 - Label column: 52px, `bg-panel`, `border-r line`. Rows: `text-[11px] text-muted` centred,
   `border-b line`, `border-l-2 border-transparent`; selected → `border-l-accent text-text`; hover
   `text-text`. Solo badge: `h-5 w-5 rounded bg-warn text-ground text-[10px] font-bold` "S".
-- Ruler: `RULER_H = 28` stays, `bg-panel border-b line`, ticks `w-px bg-line` anchored bottom
-  (minor 6px, major 12px), labels `top-0.5 left+3 text-[10px] text-muted tabular-nums`.
+- Ruler: `RULER_H = 28` stays, `bg-panel border-b line`, ticks `w-px bg-line` anchored bottom, one
+  tick height (12px), every tick labelled, labels anchored from the bottom (`bottom-11 left+3
+  text-[10px] text-muted tabular-nums`).
 - Play range: wash `bg-warn/15` over the ruler height only; 1px `bg-warn` lines full ruler height;
   in wedge `size-2 bg-warn clip-path: polygon(0 0,100% 0,0 100%)` at `in`, out wedge
   `polygon(100% 0,0 0,100% 100%)` at `out − 8`. The "I"/"O" letter tags are removed.

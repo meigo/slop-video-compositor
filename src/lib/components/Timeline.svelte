@@ -798,13 +798,18 @@
 </script>
 
 <section class="flex h-full min-h-0 min-w-0 flex-col bg-ground" aria-label="Timeline">
+  <!-- Hand-typed near-copy of STRIP: deliberately uses `gap-2` rather than STRIP's `gap-1`, and
+       adds `overflow-x-auto` because this row overflows at ordinary window widths. The
+       `scrollbar-none` and the `::-webkit-scrollbar` rule below hide the scrollbar (a
+       classic, non-overlay scrollbar on Windows/WebView2 would otherwise take ~15px out of this
+       28px strip) while keeping it scrollable. -->
   <div
-    class="flex h-7 shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
+    class="scroll-strip flex h-7 shrink-0 scrollbar-none items-center gap-2 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
   >
-    <span class="{HEADING} inline-flex items-center gap-1">
+    <h2 class="{HEADING} inline-flex items-center gap-1">
       <Layers size={14} strokeWidth={2} aria-hidden="true" />
       Timeline
-    </span>
+    </h2>
     <span>
       {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
       · {clipCount} clip{clipCount === 1 ? "" : "s"}
@@ -872,8 +877,12 @@
   </div>
 
   <!-- Discoverable edit tools (keyboard shortcuts still work). -->
+  <!-- Hand-typed near-copy of STRIP: deliberately adds `overflow-x-auto` because this row
+       overflows at ordinary window widths. `scrollbar-none` and the `::-webkit-scrollbar`
+       rule below hide the scrollbar (a classic, non-overlay scrollbar on Windows/WebView2 would
+       otherwise take ~15px out of this 28px strip) while keeping it scrollable. -->
   <div
-    class="flex h-7 shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
+    class="scroll-strip flex h-7 shrink-0 scrollbar-none items-center gap-1 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
     role="toolbar"
     aria-label="Timeline tools"
   >
@@ -1378,6 +1387,13 @@
 </section>
 
 <style>
+  /* Both header strips overflow at ordinary window widths. `scrollbar-width: none` (set via
+     utility class) hides it on Firefox/Chromium; this hides it on WebKit/Blink, including
+     Windows/WebView2, where a classic scrollbar would otherwise take ~15px out of a 28px strip. */
+  .scroll-strip::-webkit-scrollbar {
+    display: none;
+  }
+
   .timeline-body {
     flex: 1 1 auto;
     display: flex;
@@ -1685,6 +1701,7 @@
     clip-path: polygon(100% 0, 0 0, 100% 100%);
   }
 
+  /* .tool-hint carries no base styling — the class survives purely so it can be hidden below. */
   @media (max-width: 900px) {
     .tool-hint {
       display: none;

@@ -5,6 +5,11 @@
  * Plain strings rather than `@apply`: in Tailwind 4 an `@apply` inside a component <style>
  * needs an `@reference` in every file. Every control in a bar is 24px tall (`h-6`); padding
  * alone gave icon buttons and text toggles different heights.
+ *
+ * eslint.config.js scopes the `better-tailwindcss` plugin to `**\/*.svelte` and `**\/*.html`, so
+ * this file gets no automated conflict/duplicate-class checking even though it holds most of the
+ * app's class strings. Its strings are hand-audited instead — check any new constant by eye for
+ * two utilities setting the same property.
  */
 
 /** Every bar control: 24px tall, centred, 4px radius. */
@@ -63,7 +68,10 @@ export const FIELD = "h-6 min-w-0 rounded bg-raised px-1 text-right text-xs text
 export const BORDERED_BTN =
   "inline-flex items-center gap-1 rounded border border-line px-2 py-1 text-xs whitespace-nowrap text-muted hover:bg-raised hover:text-text disabled:opacity-30";
 
-/** 28px thin strip: header rows, tool strips, status line. Caller adds `border-b` / `border-t`. */
+/** 28px thin strip: header rows, tool strips, status line. Caller adds `border-b` / `border-t`.
+ *  Four strips deliberately diverge from this literal instead of importing it (Transport,
+ *  StatusLine, and Timeline's two header bars) — see the comment at each call site for why.
+ *  Changing this constant will not reach them. */
 export const STRIP =
   "flex h-7 shrink-0 items-center gap-1 border-line bg-panel px-2 text-[11px] text-muted";
 

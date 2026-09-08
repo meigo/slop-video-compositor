@@ -241,7 +241,7 @@
     </button>
   </div>
 
-  <div class={DIVIDER}></div>
+  <div class={DIVIDER} aria-hidden="true"></div>
 
   <!-- import -->
   <div class="flex items-center gap-1">
@@ -320,7 +320,7 @@
     </div>
   </div>
 
-  <div class={DIVIDER}></div>
+  <div class={DIVIDER} aria-hidden="true"></div>
 
   <!-- edit -->
   <div class="flex items-center gap-1">
@@ -412,7 +412,7 @@
       {/if}
     </div>
 
-    <div class={DIVIDER}></div>
+    <div class={DIVIDER} aria-hidden="true"></div>
 
     <button
       type="button"
