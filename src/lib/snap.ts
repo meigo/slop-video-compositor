@@ -10,7 +10,11 @@ export const DEFAULT_SNAP_THRESHOLD = 0.12;
  */
 export function collectSnapTimes(
   project: Project,
-  opts?: { excludeClipId?: string | null; playhead?: number | null },
+  opts?: {
+    excludeClipId?: string | null;
+    excludeMarkerId?: string | null;
+    playhead?: number | null;
+  },
 ): number[] {
   const times = new Set<number>([0, projectDuration(project)]);
   if (opts?.playhead != null && Number.isFinite(opts.playhead)) {
@@ -24,6 +28,8 @@ export function collectSnapTimes(
     }
   }
   for (const m of project.markers ?? []) {
+    // A dragged marker must not offer its own position as a target, or it sticks where it started.
+    if (opts?.excludeMarkerId && m.id === opts.excludeMarkerId) continue;
     if (Number.isFinite(m.t) && m.t >= 0) times.add(m.t);
   }
   return [...times].sort((a, b) => a - b);

@@ -32,6 +32,7 @@ import {
   parseProject,
   PROJECT_FPS,
   projectDuration,
+  moveMarker,
   removeMarker,
   renameMarker,
   serializeProject,
@@ -828,6 +829,17 @@ export function deleteMarker(markerId: string) {
   if (next === project()) return;
   commitProject(next);
   app.status = "Marker removed";
+}
+
+/**
+ * Set a marker's time WITHOUT committing — the drag calls this on every pointer move, and the
+ * whole gesture becomes one undo entry via `commitProjectEdit` on release. Committing per move
+ * would fill the history with a step per pixel.
+ */
+export function setMarkerTimeLive(markerId: string, t: number) {
+  const next = moveMarker(project(), markerId, t);
+  if (next === project()) return;
+  setPresentLive(next);
 }
 
 export function renameMarkerLabel(markerId: string, label: string) {

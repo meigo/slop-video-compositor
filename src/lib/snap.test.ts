@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createProject, defaultTransform } from "./project";
+import { addMarker, createProject, defaultTransform } from "./project";
 import { collectSnapTimes, snapClipStart, snapTime } from "./snap";
 
 describe("snapTime", () => {
@@ -36,5 +36,18 @@ describe("collectSnapTimes", () => {
     expect(times).toContain(4);
     expect(times).not.toContain(2);
     expect(times).not.toContain(5);
+  });
+});
+
+describe("collectSnapTimes with excludeMarkerId", () => {
+  it("drops the dragged marker so it cannot snap to where it already is", () => {
+    let p = createProject();
+    p.duration = 10;
+    p = addMarker(p, 4, "A");
+    p = addMarker(p, 7, "B");
+    const a = p.markers!.find((m) => m.label === "A")!.id;
+    const times = collectSnapTimes(p, { excludeMarkerId: a });
+    expect(times).not.toContain(4);
+    expect(times).toContain(7);
   });
 });

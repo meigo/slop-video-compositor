@@ -79,6 +79,7 @@
     selectClipOnly,
     setPlayInAtPlayhead,
     setPlayOutAtPlayhead,
+    setMarkerTimeLive,
     setPlayhead,
     setPresentLive,
     setTimelineDuration,
@@ -389,6 +390,96 @@
     selectTrack(trackId);
     clearClipSelection();
     startScrub(e);
+  }
+
+  // --- Marker drag -------------------------------------------------------------------------
+  // Same shape as the clip drag: a few pixels of travel before a press counts as a drag, so a
+  // plain click still reads as a click and seeks. That is also why the seek moved to pointerUP —
+  // seeking on press would jump the playhead the instant you grabbed a marker to move it.
+  let dragMarkerId = $state<string | null>(null);
+  let markerDragBefore: Project | null = null;
+  let markerOriginX = 0;
+  let markerStartT = 0;
+  let markerLabel = "";
+  let markerDidMove = $state(false);
+  let markerPointerId: number | null = null;
+
+  function clearMarkerDrag() {
+    dragMarkerId = null;
+    markerDragBefore = null;
+    markerDidMove = false;
+    markerPointerId = null;
+  }
+
+  function onMarkerPointerDown(e: PointerEvent, id: string, t: number, label: string) {
+    // Keep hits on the marker (not ruler scrub / playhead).
+    e.stopPropagation();
+    if (e.altKey) {
+      e.preventDefault();
+      deleteMarker(id);
+      return;
+    }
+    // detail >= 2 is the second click of a double-click — leave it to the rename handler.
+    if (e.detail >= 2) return;
+    if (dragKind || resizingDuration) return;
+
+    dragMarkerId = id;
+    markerDragBefore = project();
+    markerOriginX = e.clientX;
+    markerStartT = t;
+    markerLabel = label;
+    markerDidMove = false;
+    markerPointerId = e.pointerId;
+
+    window.addEventListener("pointermove", onMarkerPointerMove);
+    window.addEventListener("pointerup", onMarkerPointerUp);
+    window.addEventListener("pointercancel", onMarkerPointerUp);
+  }
+
+  function onMarkerPointerMove(e: PointerEvent) {
+    if (!dragMarkerId || !markerDragBefore) return;
+    if (markerPointerId !== null && e.pointerId !== markerPointerId) return;
+
+    const dx = e.clientX - markerOriginX;
+    if (!markerDidMove && Math.abs(dx) < 3) return;
+    markerDidMove = true;
+
+    let t = Math.max(0, markerStartT + dx / pxPerSecond);
+    // Shift = free, matching clip drags. The threshold widens as you zoom out so the pull stays
+    // the same distance on screen rather than the same number of seconds.
+    if (!e.shiftKey) {
+      const targets = collectSnapTimes(markerDragBefore, {
+        excludeMarkerId: dragMarkerId,
+        playhead: app.playhead,
+      });
+      t = snapTime(t, targets, Math.max(DEFAULT_SNAP_THRESHOLD, 8 / pxPerSecond));
+    }
+    setMarkerTimeLive(dragMarkerId, t);
+  }
+
+  function onMarkerPointerUp(e: PointerEvent) {
+    if (!dragMarkerId || !markerDragBefore) return;
+    if (markerPointerId !== null && e.pointerId !== markerPointerId) return;
+
+    const before = markerDragBefore;
+    const moved = markerDidMove;
+    const id = dragMarkerId;
+    const label = markerLabel;
+    const startT = markerStartT;
+
+    window.removeEventListener("pointermove", onMarkerPointerMove);
+    window.removeEventListener("pointerup", onMarkerPointerUp);
+    window.removeEventListener("pointercancel", onMarkerPointerUp);
+    clearMarkerDrag();
+
+    if (!moved) {
+      setPlayhead(startT);
+      app.status = `Marker ${label}`;
+      return;
+    }
+    if (!commitProjectEdit(before, project())) return;
+    const at = (project().markers ?? []).find((m) => m.id === id)?.t ?? startT;
+    app.status = `Marker ${label} moved to ${formatTimestamp(at)}`;
   }
 
   function onClipPointerDown(
@@ -1122,24 +1213,11 @@
                   type="button"
                   class="marker"
                   style:left="{marker.t * pxPerSecond}px"
-                  title="{marker.label} @ {formatTimestamp(
-                    marker.t,
-                  )} — click seek, double-click rename, Alt+click remove"
+                  class:dragging={dragMarkerId === marker.id && markerDidMove}
+                  title="{marker.label} @ {formatTimestamp(marker.t)}"
+                  data-hint="Drag to move (Shift for free) · click to seek · double-click to rename · Alt+click to remove"
                   aria-label="Marker {marker.label}"
-                  onpointerdown={(e) => {
-                    // Keep hits on the marker (not ruler scrub / playhead).
-                    e.stopPropagation();
-                    if (e.altKey) {
-                      e.preventDefault();
-                      deleteMarker(marker.id);
-                      return;
-                    }
-                    // detail >= 2 is the 2nd click of a double-click — skip seek
-                    // so the playhead doesn't jump under the cursor before rename.
-                    if (e.detail >= 2) return;
-                    setPlayhead(marker.t);
-                    app.status = `Marker ${marker.label}`;
-                  }}
+                  onpointerdown={(e) => onMarkerPointerDown(e, marker.id, marker.t, marker.label)}
                   ondblclick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1587,7 +1665,7 @@
     padding: 1px 4px 0 3px;
     border: none;
     background: transparent;
-    cursor: pointer;
+    cursor: grab;
     z-index: 5;
     box-sizing: border-box;
   }
@@ -1643,6 +1721,11 @@
     background: var(--color-text);
     border-radius: 2px;
     pointer-events: none;
+  }
+
+  .marker.dragging {
+    cursor: grabbing;
+    z-index: 6;
   }
 
   .marker.editing {

@@ -300,6 +300,23 @@ export function removeMarker(project: Project, markerId: string): Project {
   return { ...project, markers };
 }
 
+/**
+ * Move a marker to a new time. Clamped at zero and re-sorted, so the list stays in time order
+ * the way `addMarker` leaves it — `seekPrevCut`/`seekNextCut` walk it in order.
+ */
+export function moveMarker(project: Project, markerId: string, t: number): Project {
+  if (!Number.isFinite(t)) return project;
+  const markers = project.markers ?? [];
+  const idx = markers.findIndex((m) => m.id === markerId);
+  if (idx < 0) return project;
+  const next = Math.max(0, t);
+  if (markers[idx]!.t === next) return project;
+  const moved = markers.slice();
+  moved[idx] = { ...moved[idx]!, t: next };
+  moved.sort((a, b) => a.t - b.t);
+  return { ...project, markers: moved };
+}
+
 /** Rename a marker. Empty/whitespace falls back to a short id-based label. */
 export function renameMarker(project: Project, markerId: string, label: string): Project {
   const markers = project.markers ?? [];

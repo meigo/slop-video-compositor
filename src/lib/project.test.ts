@@ -15,6 +15,7 @@ import {
   evenCanvasDim,
   trimProjectToTime,
   addMarker,
+  moveMarker,
   renameMarker,
 } from "./project";
 import type { Clip, Project } from "./types";
@@ -265,5 +266,43 @@ describe("snapToFrame", () => {
     expect(snapToFrame(1 / 30)).toBeCloseTo(1 / 30, 10);
     expect(snapToFrame(1 / 30 + 0.001)).toBeCloseTo(1 / 30, 10);
     expect(snapToFrame(1)).toBe(1);
+  });
+});
+
+describe("moveMarker", () => {
+  it("moves a marker and keeps the list sorted by time", () => {
+    let p = createProject();
+    p = addMarker(p, 1, "A");
+    p = addMarker(p, 5, "B");
+    const a = p.markers!.find((m) => m.label === "A")!.id;
+    const next = moveMarker(p, a, 8);
+    expect(next.markers!.map((m) => m.label)).toEqual(["B", "A"]);
+    expect(next.markers!.find((m) => m.label === "A")!.t).toBe(8);
+    expect(next).not.toBe(p);
+  });
+
+  it("clamps to zero and leaves other markers untouched", () => {
+    let p = createProject();
+    p = addMarker(p, 3, "A");
+    p = addMarker(p, 6, "B");
+    const a = p.markers!.find((m) => m.label === "A")!.id;
+    const next = moveMarker(p, a, -4);
+    expect(next.markers!.find((m) => m.label === "A")!.t).toBe(0);
+    expect(next.markers!.find((m) => m.label === "B")!.t).toBe(6);
+  });
+
+  it("no-ops when the time is unchanged or the marker is missing", () => {
+    let p = createProject();
+    p = addMarker(p, 2, "A");
+    const id = p.markers![0]!.id;
+    expect(moveMarker(p, id, 2)).toBe(p);
+    expect(moveMarker(p, "missing", 9)).toBe(p);
+  });
+
+  it("ignores a non-finite time", () => {
+    let p = createProject();
+    p = addMarker(p, 2, "A");
+    const id = p.markers![0]!.id;
+    expect(moveMarker(p, id, Number.NaN)).toBe(p);
   });
 });
