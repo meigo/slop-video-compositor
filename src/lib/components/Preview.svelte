@@ -1408,8 +1408,10 @@
       </div>
     </div>
   </div>
-  <div class="view-hud">
-    {#if viewZoom !== 1 || viewPanX !== 0 || viewPanY !== 0}
+  <!-- Only while the view is off its default. At rest the readout said "fit", which is the state
+       you are in for having done nothing — a permanent label reporting the absence of a change. -->
+  {#if viewZoom !== 1 || viewPanX !== 0 || viewPanY !== 0}
+    <div class="view-hud">
       <span class="hud-value">{Math.round(viewZoom * 100)}%</span>
       <button
         type="button"
@@ -1419,10 +1421,8 @@
       >
         Fit
       </button>
-    {:else}
-      <span class="hud-value hud-resting">fit</span>
-    {/if}
-  </div>
+    </div>
+  {/if}
   <!-- Dual decoders: active free-runs, standby prefetches the next cut -->
   <!-- svelte-ignore a11y_media_has_caption -->
   <video
@@ -1540,11 +1540,6 @@
     min-width: 32px;
     text-align: right;
     color: var(--color-text);
-  }
-
-  .hud-resting {
-    min-width: auto;
-    color: var(--color-muted);
   }
 
   .fit-btn {
