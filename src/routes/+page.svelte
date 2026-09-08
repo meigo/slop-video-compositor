@@ -270,7 +270,7 @@
   });
 </script>
 
-<div class="shell" class:resizing={resizingTimeline}>
+<div class="shell legacy" class:resizing={resizingTimeline}>
   {#if app.deps && !app.deps.ffmpeg}
     <MissingDeps deps={app.deps} onRecheck={() => void refreshDeps()} />
   {/if}

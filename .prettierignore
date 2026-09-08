@@ -1,0 +1,8 @@
+node_modules
+build
+.svelte-kit
+src-tauri/target
+package-lock.json
+docs
+temp
+.superpowers
