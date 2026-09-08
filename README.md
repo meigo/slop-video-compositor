@@ -26,11 +26,11 @@ Desktop multi-shot **hard-cut** video compositor: load local video and audio ont
 - **Per-clip mute** (preview + export)
 - **Gap hatch** on empty track time; **trim handles** show unused source outside in/out
 - Per-source clip colors; long names truncated (full path on hover)
-- Snap on drag/trim (**Shift** = free); Fit zoom; **S/M/L** track row height
+- Snap on drag/trim (**Shift** = free); Fit zoom; track row height cycles S/M/L on one button
 - Optional **filmstrips** on video clips and **waveforms** on audio (Thumbs toggle; prefs persist)
 - **Program out** sequence end (shortening trims/deletes media past that time)
 - Import placement: append / at playhead / each file → new track
-- Named **markers** (seek, double-click rename, Alt+click remove); **⌥-drag** copy clips
+- Named **markers** (seek, drag to move with snapping, double-click rename, Alt+click remove); **⌥-drag** copy clips
 - Multi-select (⌘/Ctrl-click) + group time move; copy / paste / duplicate
 
 ### Preview & export
@@ -42,8 +42,10 @@ Desktop multi-shot **hard-cut** video compositor: load local video and audio ont
 - Relink + Reveal source; autosave `*.autosave.json`; startup **ffmpeg** check
 
 ### UI chrome
-- Compact toolbar: **File ▾**, **Import** + place menu, **Export**, undo/redo, **Canvas ▾**
-- Timeline tool strip: Prev/Next cut, Split, Delete, Thumbs, S/M/L, I/O range, Marker
+- Compact toolbar: **File ▾**, save, **Import** + place menu, undo/redo, **Canvas ▾**, **Export**
+- One timeline strip, icon-only: Prev/Next cut, Split, Delete, Marker, Thumbs, track height, I/O range, Clear — with Length, zoom and Fit on the right
+- Flush panels with a status line along the bottom; **drag-resizable** inspector (width persists)
+- Inspector numbers change by dragging across the field, or by typing
 
 ## Requirements
 
@@ -93,7 +95,7 @@ npm run tauri dev
 
 1. **Import** (`Import` or ⌘I) — video and/or audio. Default **appends** on the selected track. Import ▾ for playhead or each-file→new-track (⌘⇧I).
 2. **Edit** on the timeline: drag to move (snaps), edge-drag to trim (dim **handles** = unused media still on disk), **S** split, Delete remove. **⌥-drag** duplicates.
-3. **Thumbs** — filmstrips on video, waveforms on audio beds; **S/M/L** track height. First generation may take a few seconds (cached after that).
+3. **Thumbs** — filmstrips on video, waveforms on audio beds; the track-height button cycles S/M/L. First generation may take a few seconds (cached after that).
 4. **Reframe** in the preview: **Ctrl/⌘-drag** pans the clip; **Shift-drag** scales; wheel zooms the **viewport**. Timeline **Fit** fills the track width.
 5. **Play range** (optional): **I** / **O** at the playhead for preview-only in/out; **L** loop; export ignores the range.
 6. **Canvas ▾** — presets (1080p, 720p, vertical, square) or custom even W×H.
@@ -145,8 +147,8 @@ Ignored while focus is in text fields.
 - **Trim handles:** dashed extensions = media still in the file but outside the used range.
 - **Gap hatch:** empty track time (no clip, not trimmed media).
 - **Solo:** double-click a track label (preview only; export uses all tracks).
-- **Markers:** click seek; double-click rename; Alt+click remove.
-- **Thumbs / S·M·L:** session prefs persist in app settings (with timeline height).
+- **Markers:** click seek; drag to move (snaps); double-click rename; Alt+click remove.
+- **Thumbs / track height:** session prefs persist in app settings (with timeline height and inspector width).
 - **Audio beds:** audio-only clips never win the picture track; they mix under the hard-cut video.
 
 ## Project files
