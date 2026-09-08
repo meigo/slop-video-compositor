@@ -49,7 +49,7 @@
 
 <!-- Hand-typed near-copy of STRIP: deliberately drops STRIP's `text-[11px] text-muted`, or the
      `text-sm` time readout inside this bar would inherit muted grey. -->
-<div class="flex h-7 shrink-0 items-center gap-1 border-t border-line bg-panel px-2">
+<div class="flex h-7 shrink-0 items-center gap-1 border-t border-line bg-panel px-2 text-[11px]">
   {#if onHome}
     <button
       type="button"
@@ -141,7 +141,7 @@
       <Volume2 size={ICON} strokeWidth={2} aria-hidden="true" />
     {/if}
   </button>
-  <span class="ml-2 w-28 text-sm tabular-nums" aria-label="Playhead time">
+  <span class="ml-2 w-24 text-xs tabular-nums" aria-label="Playhead time">
     {formatTimestamp(playhead)}<span class="text-muted"> / {formatTimestamp(duration)}</span>
   </span>
 </div>

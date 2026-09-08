@@ -15,11 +15,13 @@
     truncateMiddle,
     canExport,
     canRedo,
+    beginClipFieldGesture,
     canUndo,
     clearPlayRange,
     clampTimelineHeight,
     copySelectedClip,
     duration,
+    endClipFieldGesture,
     duplicateSelectedClip,
     exportVideo,
     hasPlayRange,
@@ -404,6 +406,8 @@
         {basename}
         {truncateMiddle}
         onUpdate={updateSelectedClipFields}
+        onScrubStart={beginClipFieldGesture}
+        onScrubEnd={endClipFieldGesture}
         onResetTransform={resetSelectedTransform}
         onRelink={() => void relinkSelected()}
         onReveal={() => void revealSelectedSource()}

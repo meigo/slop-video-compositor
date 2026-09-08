@@ -7,9 +7,10 @@
   import Volume2 from "@lucide/svelte/icons/volume-2";
   import VolumeX from "@lucide/svelte/icons/volume-x";
   import { clipColorSolid } from "$lib/clipColor";
+  import NumberField from "$lib/components/NumberField.svelte";
   import { formatTimestamp, roundTo } from "$lib/time";
   import type { Clip, SourceMeta } from "$lib/types";
-  import { BORDERED_BTN, FIELD, HEADING, STRIP, toggleClass } from "$lib/ui";
+  import { BORDERED_BTN, HEADING, STRIP, toggleClass } from "$lib/ui";
 
   /** label | field | unit — every field row in the panel sits in one grid container (the
    *  Transform heading and its divider are full-width children inside it), so the label and
@@ -33,6 +34,8 @@
       muted?: boolean;
     }) => void;
     onResetTransform: () => void;
+    onScrubStart: () => void;
+    onScrubEnd: () => void;
     onRelink: () => void;
     onReveal: () => void;
   }
@@ -44,13 +47,11 @@
     truncateMiddle,
     onUpdate,
     onResetTransform,
+    onScrubStart,
+    onScrubEnd,
     onRelink,
     onReveal,
   }: Props = $props();
-
-  function num(e: Event, places = 2): number {
-    return roundTo(Number((e.target as HTMLInputElement).value), places);
-  }
 </script>
 
 <aside
@@ -123,37 +124,58 @@
       <section class="grid items-center gap-2 border-t border-line pt-2 {GRID}">
         <label class="contents">
           <span class={LABEL}>Source in</span>
-          <input
-            class="{FIELD} w-full"
-            type="number"
-            step="0.01"
-            min="0"
-            value={roundTo(clip.sourceIn, 2)}
-            onchange={(e) => onUpdate({ sourceIn: num(e, 2) })}
+          <NumberField
+            value={clip.sourceIn}
+            ariaLabel="Source in"
+            title="Drag to change · Shift for fine steps"
+            min={0}
+            step={0.01}
+            onInput={(v) => {
+              onScrubStart();
+              onUpdate({ sourceIn: v });
+            }}
+            onCommit={(v) => {
+              onUpdate({ sourceIn: v });
+              onScrubEnd();
+            }}
           />
           <span class={UNIT}>s</span>
         </label>
         <label class="contents">
           <span class={LABEL}>Source out</span>
-          <input
-            class="{FIELD} w-full"
-            type="number"
-            step="0.01"
-            min="0"
-            value={roundTo(clip.sourceOut, 2)}
-            onchange={(e) => onUpdate({ sourceOut: num(e, 2) })}
+          <NumberField
+            value={clip.sourceOut}
+            ariaLabel="Source out"
+            title="Drag to change · Shift for fine steps"
+            min={0}
+            step={0.01}
+            onInput={(v) => {
+              onScrubStart();
+              onUpdate({ sourceOut: v });
+            }}
+            onCommit={(v) => {
+              onUpdate({ sourceOut: v });
+              onScrubEnd();
+            }}
           />
           <span class={UNIT}>s</span>
         </label>
         <label class="contents">
           <span class={LABEL}>Timeline start</span>
-          <input
-            class="{FIELD} w-full"
-            type="number"
-            step="0.01"
-            min="0"
-            value={roundTo(clip.timelineStart, 2)}
-            onchange={(e) => onUpdate({ timelineStart: num(e, 2) })}
+          <NumberField
+            value={clip.timelineStart}
+            ariaLabel="Timeline start"
+            title="Drag to change · Shift for fine steps"
+            min={0}
+            step={0.01}
+            onInput={(v) => {
+              onScrubStart();
+              onUpdate({ timelineStart: v });
+            }}
+            onCommit={(v) => {
+              onUpdate({ timelineStart: v });
+              onScrubEnd();
+            }}
           />
           <span class={UNIT}>s</span>
         </label>
@@ -189,36 +211,59 @@
         <h3 class="{HEADING} col-span-3">Transform</h3>
         <label class="contents">
           <span class={LABEL}>Scale</span>
-          <input
-            class="{FIELD} w-full"
-            type="number"
-            step="0.05"
-            min="0.05"
-            max="8"
-            value={roundTo(clip.transform.scale, 2)}
-            onchange={(e) => onUpdate({ transform: { scale: num(e, 2) } })}
+          <NumberField
+            value={clip.transform.scale}
+            ariaLabel="Scale"
+            title="Drag to change · Shift for fine steps"
+            min={0.05}
+            max={8}
+            step={0.01}
+            onInput={(v) => {
+              onScrubStart();
+              onUpdate({ transform: { scale: v } });
+            }}
+            onCommit={(v) => {
+              onUpdate({ transform: { scale: v } });
+              onScrubEnd();
+            }}
           />
           <span class={UNIT}>×</span>
         </label>
         <label class="contents">
           <span class={LABEL}>X</span>
-          <input
-            class="{FIELD} w-full"
-            type="number"
-            step="1"
-            value={roundTo(clip.transform.x, 0)}
-            onchange={(e) => onUpdate({ transform: { x: num(e, 0) } })}
+          <NumberField
+            value={clip.transform.x}
+            ariaLabel="X"
+            title="Drag to change · Shift for fine steps"
+            step={1}
+            decimals={0}
+            onInput={(v) => {
+              onScrubStart();
+              onUpdate({ transform: { x: v } });
+            }}
+            onCommit={(v) => {
+              onUpdate({ transform: { x: v } });
+              onScrubEnd();
+            }}
           />
           <span class={UNIT}>px</span>
         </label>
         <label class="contents">
           <span class={LABEL}>Y</span>
-          <input
-            class="{FIELD} w-full"
-            type="number"
-            step="1"
-            value={roundTo(clip.transform.y, 0)}
-            onchange={(e) => onUpdate({ transform: { y: num(e, 0) } })}
+          <NumberField
+            value={clip.transform.y}
+            ariaLabel="Y"
+            title="Drag to change · Shift for fine steps"
+            step={1}
+            decimals={0}
+            onInput={(v) => {
+              onScrubStart();
+              onUpdate({ transform: { y: v } });
+            }}
+            onCommit={(v) => {
+              onUpdate({ transform: { y: v } });
+              onScrubEnd();
+            }}
           />
           <span class={UNIT}>px</span>
         </label>

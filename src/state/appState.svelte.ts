@@ -865,6 +865,25 @@ export async function revealSelectedSource() {
   }
 }
 
+/**
+ * A scrub on an inspector field is one gesture, not one edit per pixel. While a gesture is open
+ * `updateSelectedClipFields` previews into the present instead of committing, and the whole drag
+ * lands as a single undo entry when it closes — the same shape the marker drag uses.
+ */
+let clipFieldGestureBefore: Project | null = null;
+
+export function beginClipFieldGesture() {
+  if (clipFieldGestureBefore) return;
+  clipFieldGestureBefore = project();
+}
+
+export function endClipFieldGesture() {
+  const before = clipFieldGestureBefore;
+  clipFieldGestureBefore = null;
+  if (!before) return;
+  commitProjectEdit(before, project());
+}
+
 export function updateSelectedClipFields(patch: {
   sourceIn?: number;
   sourceOut?: number;
@@ -906,7 +925,9 @@ export function updateSelectedClipFields(patch: {
     transform: patch.transform ? { ...prev.transform, ...patch.transform } : prev.transform,
   };
   // Timing edits can create same-track overlaps — overwrite neighbors (clip wins).
-  commitProject(overwriteWithClip(replaceClip(project(), id, next), id));
+  const applied = overwriteWithClip(replaceClip(project(), id, next), id);
+  if (clipFieldGestureBefore) setPresentLive(applied);
+  else commitProject(applied);
   if (patch.muted !== undefined) {
     app.status = patch.muted ? "Clip muted" : "Clip unmuted";
   }
