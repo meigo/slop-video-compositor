@@ -47,8 +47,7 @@ export function waveformTrimLayout(
   sourceOut: number,
   mediaDuration: number,
 ): { widthPercent: number; translatePercent: number } {
-  const media =
-    Number.isFinite(mediaDuration) && mediaDuration > 1e-6 ? mediaDuration : 1;
+  const media = Number.isFinite(mediaDuration) && mediaDuration > 1e-6 ? mediaDuration : 1;
   const inT = Math.max(0, Math.min(media, Number.isFinite(sourceIn) ? sourceIn : 0));
   const outT = Math.max(
     inT + 1e-6,

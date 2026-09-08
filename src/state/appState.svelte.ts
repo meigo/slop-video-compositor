@@ -7,16 +7,8 @@ import {
   overwriteWithClip,
 } from "$lib/clips";
 import { nextCut, prevCut } from "$lib/cuts";
-import {
-  effectivePlayBounds,
-  hasExplicitPlayRange,
-  type PlayBounds,
-} from "$lib/playRange";
-import {
-  DEFAULT_TRACK_ROW_SIZE,
-  isTrackRowSize,
-  type TrackRowSize,
-} from "$lib/trackRow";
+import { effectivePlayBounds, hasExplicitPlayRange, type PlayBounds } from "$lib/playRange";
+import { DEFAULT_TRACK_ROW_SIZE, isTrackRowSize, type TrackRowSize } from "$lib/trackRow";
 import { defaultExportFileName } from "$lib/exportName";
 import { toExportOpts } from "$lib/exportPayload";
 import {
@@ -67,14 +59,7 @@ import {
   writeProjectFile,
   writeTextFile,
 } from "$lib/tauri";
-import type {
-  AppSettings,
-  Clip,
-  ClipTransform,
-  DepsStatus,
-  Project,
-  SourceMeta,
-} from "$lib/types";
+import type { AppSettings, Clip, ClipTransform, DepsStatus, Project, SourceMeta } from "$lib/types";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 function initialProject(): Project {
@@ -458,11 +443,7 @@ export async function importVideos(placement: ImportPlacement = app.importPlacem
       await persistSettings();
       const failNote = failed > 0 ? `, ${failed} failed` : "";
       const mode =
-        placement === "new-tracks"
-          ? " as tracks"
-          : placement === "append"
-            ? " (appended)"
-            : "";
+        placement === "new-tracks" ? " as tracks" : placement === "append" ? " (appended)" : "";
       app.status = `Imported ${added} clip${added === 1 ? "" : "s"}${mode}${failNote}`;
       scheduleAutosave();
     } else if (failed > 0) {
@@ -716,9 +697,7 @@ export function seekPlayheadHome() {
   app.playing = false;
   const { start } = playBounds();
   setPlayhead(start);
-  app.status = hasPlayRange()
-    ? `Playhead play-in ${start.toFixed(2)}s`
-    : "Playhead 0";
+  app.status = hasPlayRange() ? `Playhead play-in ${start.toFixed(2)}s` : "Playhead 0";
 }
 
 export function seekPlayheadEnd() {
@@ -910,9 +889,7 @@ export function updateSelectedClipFields(patch: {
     sourceOut,
     timelineStart,
     muted: patch.muted !== undefined ? patch.muted : prev.muted,
-    transform: patch.transform
-      ? { ...prev.transform, ...patch.transform }
-      : prev.transform,
+    transform: patch.transform ? { ...prev.transform, ...patch.transform } : prev.transform,
   };
   // Timing edits can create same-track overlaps — overwrite neighbors (clip wins).
   commitProject(overwriteWithClip(replaceClip(project(), id, next), id));

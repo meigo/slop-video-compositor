@@ -9,6 +9,16 @@
   import { clipColorSolid } from "$lib/clipColor";
   import { formatTimestamp, roundTo } from "$lib/time";
   import type { Clip, SourceMeta } from "$lib/types";
+  import { BORDERED_BTN, FIELD, HEADING, STRIP, toggleClass } from "$lib/ui";
+
+  /** label | field | unit — every field row in the panel sits in one grid container (the
+   *  Transform heading and its divider are full-width children inside it), so the label and
+   *  field columns line up across the whole panel, not just within a section. Written as a
+   *  utility with underscores for the spaces; Tailwind 4 does generate arbitrary values that
+   *  contain commas (verified in Task 2 for the shell grid). */
+  const GRID = "grid-cols-[auto_minmax(0,1fr)_auto]";
+  const LABEL = "text-right text-[11px] whitespace-nowrap text-muted";
+  const UNIT = "w-4 text-[11px] text-muted";
 
   interface Props {
     clip: Clip | null;
@@ -38,372 +48,189 @@
     onReveal,
   }: Props = $props();
 
-  const ICON = 16;
-
   function num(e: Event, places = 2): number {
     return roundTo(Number((e.target as HTMLInputElement).value), places);
   }
 </script>
 
-<aside class="inspector" aria-label="Inspector">
-  <h2>Inspector</h2>
+<aside class="flex min-h-0 min-w-0 flex-col border-l border-line bg-panel" aria-label="Inspector">
+  <h2 class="{STRIP} border-b">Inspector</h2>
 
-  {#if !clip}
-    <p class="empty">Select a clip to edit</p>
-  {:else}
-    <div class="field path">
-      <span class="label">Source</span>
-      <span class="value mono source-row" title={clip.sourcePath}>
+  <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-2 text-xs">
+    {#if !clip}
+      <p class="text-xs text-muted">Select a clip to edit</p>
+    {:else}
+      <section class="flex flex-col gap-1.5">
+        <h3 class={HEADING}>Source</h3>
+        <div class="flex min-w-0 items-center gap-1.5" title={clip.sourcePath}>
+          <span
+            class="size-2.5 shrink-0 rounded-sm border border-line"
+            style:background={clipColorSolid(clip.sourcePath)}
+            title="Timeline color for this source file"
+            aria-hidden="true"
+          ></span>
+          <Film size={14} strokeWidth={2} class="shrink-0 opacity-75" aria-hidden="true" />
+          <span class="truncate text-text">{truncateMiddle(basename(clip.sourcePath), 40)}</span>
+        </div>
+        {#if !meta}
+          <span class="inline-flex items-center gap-1 text-[11px] text-danger">
+            <TriangleAlert size={14} strokeWidth={2} aria-hidden="true" />
+            Missing media — relink to restore
+          </span>
+        {:else}
+          <span class="inline-flex items-center gap-1 text-[11px] text-muted tabular-nums">
+            {#if meta.width > 0 && meta.height > 0}
+              {meta.width}×{meta.height}
+            {:else}
+              audio only
+            {/if}
+            · {formatTimestamp(meta.duration)}
+            ·
+            {#if meta.hasAudio}
+              <Volume2 size={13} strokeWidth={2} aria-hidden="true" />
+              audio
+            {:else}
+              <VolumeX size={13} strokeWidth={2} aria-hidden="true" />
+              no audio
+            {/if}
+          </span>
+        {/if}
+        <div class="flex flex-wrap gap-1">
+          <button
+            type="button"
+            class={BORDERED_BTN}
+            onclick={onRelink}
+            title="Choose a new file for this clip’s source path"
+          >
+            <Link2 size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Relink…</span>
+          </button>
+          <button
+            type="button"
+            class={BORDERED_BTN}
+            onclick={onReveal}
+            title="Reveal source in Finder"
+          >
+            <FolderOpen size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Reveal</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="grid items-center gap-2 border-t border-line pt-2 {GRID}">
+        <label class="contents">
+          <span class={LABEL}>Source in</span>
+          <input
+            class="{FIELD} w-full"
+            type="number"
+            step="0.01"
+            min="0"
+            value={roundTo(clip.sourceIn, 2)}
+            onchange={(e) => onUpdate({ sourceIn: num(e, 2) })}
+          />
+          <span class={UNIT}>s</span>
+        </label>
+        <label class="contents">
+          <span class={LABEL}>Source out</span>
+          <input
+            class="{FIELD} w-full"
+            type="number"
+            step="0.01"
+            min="0"
+            value={roundTo(clip.sourceOut, 2)}
+            onchange={(e) => onUpdate({ sourceOut: num(e, 2) })}
+          />
+          <span class={UNIT}>s</span>
+        </label>
+        <label class="contents">
+          <span class={LABEL}>Timeline start</span>
+          <input
+            class="{FIELD} w-full"
+            type="number"
+            step="0.01"
+            min="0"
+            value={roundTo(clip.timelineStart, 2)}
+            onchange={(e) => onUpdate({ timelineStart: num(e, 2) })}
+          />
+          <span class={UNIT}>s</span>
+        </label>
+        <span class={LABEL}>Duration</span>
         <span
-          class="color-swatch"
-          style:background={clipColorSolid(clip.sourcePath)}
-          title="Timeline color for this source file"
-          aria-hidden="true"
-        ></span>
-        <Film size={14} strokeWidth={2} class="source-icon" aria-hidden="true" />
-        <span class="source-name">{truncateMiddle(basename(clip.sourcePath), 40)}</span>
-      </span>
-      {#if !meta}
-        <span class="warn">
-          <TriangleAlert size={14} strokeWidth={2} aria-hidden="true" />
-          Missing media — relink to restore
+          class="flex h-6 w-full min-w-0 items-center justify-end gap-1 rounded bg-raised px-1 text-xs text-muted tabular-nums"
+          title="Clip duration (read-only)"
+        >
+          {formatTimestamp(clip.sourceOut - clip.sourceIn)}
+          <span>({roundTo(clip.sourceOut - clip.sourceIn, 2)}s)</span>
         </span>
-      {:else}
-        <span class="meta muted">
-          {#if meta.width > 0 && meta.height > 0}
-            {meta.width}×{meta.height}
-          {:else}
-            audio only
-          {/if}
-          · {formatTimestamp(meta.duration)}
-          ·
-          {#if meta.hasAudio}
-            <Volume2 size={13} strokeWidth={2} class="inline-icon" aria-hidden="true" />
-            audio
-          {:else}
-            <VolumeX size={13} strokeWidth={2} class="inline-icon" aria-hidden="true" />
-            no audio
-          {/if}
-        </span>
-      {/if}
-      <div class="btn-row">
+        <span class={UNIT}></span>
+        <span class={LABEL}>Audio</span>
         <button
           type="button"
-          class="ghost"
-          onclick={onRelink}
-          title="Choose a new file for this clip’s source path"
+          class="{toggleClass(clip.muted === true)} justify-self-start"
+          aria-pressed={clip.muted === true}
+          title={meta != null && !meta.hasAudio
+            ? "Source has no audio (mute still silences if audio appears after relink)"
+            : "Silence this clip in preview and export"}
+          onclick={() => onUpdate({ muted: clip.muted !== true })}
         >
-          <Link2 size={ICON} strokeWidth={2} aria-hidden="true" />
-          <span>Relink…</span>
-        </button>
-        <button type="button" class="ghost" onclick={onReveal} title="Reveal source in Finder">
-          <FolderOpen size={ICON} strokeWidth={2} aria-hidden="true" />
-          <span>Reveal</span>
-        </button>
-      </div>
-    </div>
-
-    <div class="grid">
-      <label>
-        <span class="label">Source in</span>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={roundTo(clip.sourceIn, 2)}
-          onchange={(e) => onUpdate({ sourceIn: num(e, 2) })}
-        />
-      </label>
-      <label>
-        <span class="label">Source out</span>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={roundTo(clip.sourceOut, 2)}
-          onchange={(e) => onUpdate({ sourceOut: num(e, 2) })}
-        />
-      </label>
-      <label>
-        <span class="label">Timeline start</span>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={roundTo(clip.timelineStart, 2)}
-          onchange={(e) => onUpdate({ timelineStart: num(e, 2) })}
-        />
-      </label>
-      <div class="ro">
-        <span class="label">Duration</span>
-        <span class="value mono duration-value" title="Clip duration (read-only)">
-          {formatTimestamp(clip.sourceOut - clip.sourceIn)}
-          <span class="secs">({roundTo(clip.sourceOut - clip.sourceIn, 2)}s)</span>
-        </span>
-      </div>
-      <label
-        class="check-row"
-        title={meta != null && !meta.hasAudio
-          ? "Source has no audio (mute still silences if audio appears after relink)"
-          : "Silence this clip in preview and export"}
-      >
-        <input
-          type="checkbox"
-          checked={clip.muted === true}
-          onchange={(e) => onUpdate({ muted: (e.target as HTMLInputElement).checked })}
-        />
-        <span class="label-inline">
           {#if clip.muted}
             <VolumeX size={14} strokeWidth={2} aria-hidden="true" />
           {:else}
             <Volume2 size={14} strokeWidth={2} aria-hidden="true" />
           {/if}
-          Mute clip
-        </span>
-      </label>
-    </div>
+          Mute
+        </button>
+        <span class={UNIT}></span>
 
-    <h3>Transform</h3>
-    <div class="grid">
-      <label>
-        <span class="label">Scale</span>
-        <input
-          type="number"
-          step="0.05"
-          min="0.05"
-          max="8"
-          value={roundTo(clip.transform.scale, 2)}
-          onchange={(e) => onUpdate({ transform: { scale: num(e, 2) } })}
-        />
-      </label>
-      <label>
-        <span class="label">X</span>
-        <input
-          type="number"
-          step="1"
-          value={roundTo(clip.transform.x, 0)}
-          onchange={(e) => onUpdate({ transform: { x: num(e, 0) } })}
-        />
-      </label>
-      <label>
-        <span class="label">Y</span>
-        <input
-          type="number"
-          step="1"
-          value={roundTo(clip.transform.y, 0)}
-          onchange={(e) => onUpdate({ transform: { y: num(e, 0) } })}
-        />
-      </label>
-    </div>
-    <button
-      type="button"
-      class="ghost reset"
-      onclick={onResetTransform}
-      title="Reset scale and position to default"
-    >
-      <RotateCcw size={ICON} strokeWidth={2} aria-hidden="true" />
-      <span>Reset transform</span>
-    </button>
-  {/if}
+        <div class="col-span-3 border-t border-line"></div>
+        <h3 class="{HEADING} col-span-3">Transform</h3>
+        <label class="contents">
+          <span class={LABEL}>Scale</span>
+          <input
+            class="{FIELD} w-full"
+            type="number"
+            step="0.05"
+            min="0.05"
+            max="8"
+            value={roundTo(clip.transform.scale, 2)}
+            onchange={(e) => onUpdate({ transform: { scale: num(e, 2) } })}
+          />
+          <span class={UNIT}>×</span>
+        </label>
+        <label class="contents">
+          <span class={LABEL}>X</span>
+          <input
+            class="{FIELD} w-full"
+            type="number"
+            step="1"
+            value={roundTo(clip.transform.x, 0)}
+            onchange={(e) => onUpdate({ transform: { x: num(e, 0) } })}
+          />
+          <span class={UNIT}>px</span>
+        </label>
+        <label class="contents">
+          <span class={LABEL}>Y</span>
+          <input
+            class="{FIELD} w-full"
+            type="number"
+            step="1"
+            value={roundTo(clip.transform.y, 0)}
+            onchange={(e) => onUpdate({ transform: { y: num(e, 0) } })}
+          />
+          <span class={UNIT}>px</span>
+        </label>
+        <div class="col-span-3">
+          <button
+            type="button"
+            class={BORDERED_BTN}
+            onclick={onResetTransform}
+            title="Reset scale and position to default"
+          >
+            <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Reset transform</span>
+          </button>
+        </div>
+      </section>
+    {/if}
+  </div>
 </aside>
-
-<style>
-  .inspector {
-    display: flex;
-    flex-direction: column;
-    gap: 0.65rem;
-    padding: 0.75rem 0.85rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    min-height: 0;
-    overflow: auto;
-  }
-
-  .inspector :global(button) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  h2 {
-    margin: 0;
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-  }
-
-  .source-row {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .source-name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .color-swatch {
-    flex-shrink: 0;
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-  }
-
-  .source-row :global(.source-icon) {
-    flex-shrink: 0;
-    opacity: 0.75;
-  }
-
-  h3 {
-    margin: 0.35rem 0 0;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-
-  .empty {
-    margin: 0.5rem 0 0;
-    color: var(--muted);
-    font-size: 0.9rem;
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-  }
-
-  .btn-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-  }
-
-  .btn-row :global(button) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-  }
-
-  label,
-  .ro {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    min-width: 0;
-  }
-
-  .label {
-    font-size: 0.75rem;
-    color: var(--muted);
-  }
-
-  .value {
-    font-size: 0.9rem;
-    color: var(--text);
-    word-break: break-all;
-  }
-
-  /* Match adjacent number inputs (height + type size) */
-  .duration-value {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    min-height: 2.1rem;
-    padding: 0.4em 0.55em;
-    box-sizing: border-box;
-    font-size: 1em;
-    line-height: 1.25;
-    color: var(--text);
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    word-break: normal;
-  }
-
-  .duration-value .secs {
-    color: var(--muted);
-    font-size: inherit;
-    font-weight: 400;
-  }
-
-  .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-
-  .muted {
-    color: var(--muted);
-    font-size: 0.8rem;
-  }
-
-  .warn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: var(--warn);
-    font-size: 0.8rem;
-  }
-
-  .meta {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.2rem 0.25rem;
-    line-height: 1.3;
-  }
-
-  .meta :global(.inline-icon) {
-    flex-shrink: 0;
-    opacity: 0.85;
-  }
-
-  input {
-    width: 100%;
-  }
-
-  .reset {
-    align-self: flex-start;
-    margin-top: 0.15rem;
-  }
-
-  .check-row {
-    grid-column: 1 / -1;
-    flex-direction: row;
-    align-items: center;
-    gap: 0.45rem;
-    min-height: 2.1rem;
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .check-row input[type="checkbox"] {
-    width: auto;
-    margin: 0;
-    accent-color: var(--accent, #5b8def);
-  }
-
-  .label-inline {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.85rem;
-    color: var(--text);
-  }
-</style>

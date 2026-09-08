@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  clipColorForPath,
-  clipColorCssVars,
-  hashString,
-  normalizePathKey,
-} from "./clipColor";
+import { clipColorForPath, clipColorCssVars, hashString, normalizePathKey } from "./clipColor";
 
 describe("clipColorForPath", () => {
   it("is stable for the same path", () => {

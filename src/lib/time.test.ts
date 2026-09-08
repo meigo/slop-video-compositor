@@ -25,4 +25,3 @@ describe("roundTo", () => {
     expect(roundTo(10.4, 0)).toBe(10);
   });
 });
-

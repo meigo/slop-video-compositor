@@ -301,11 +301,7 @@ export function removeMarker(project: Project, markerId: string): Project {
 }
 
 /** Rename a marker. Empty/whitespace falls back to a short id-based label. */
-export function renameMarker(
-  project: Project,
-  markerId: string,
-  label: string,
-): Project {
+export function renameMarker(project: Project, markerId: string, label: string): Project {
   const markers = project.markers ?? [];
   const idx = markers.findIndex((m) => m.id === markerId);
   if (idx < 0) return project;

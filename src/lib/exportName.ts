@@ -25,10 +25,7 @@ function exportLabel(project: Project, projectPath: string | null): string {
 
 /** Suggested export filename: `<label>_<duration>_<n>clip.mp4`. */
 export function defaultExportFileName(project: Project, projectPath: string | null): string {
-  const base = exportLabel(project, projectPath).replace(
-    /[<>:"/\\|?*\u0000-\u001f]/g,
-    "_",
-  );
+  const base = exportLabel(project, projectPath).replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_");
   const dur = projectDuration(project);
   const durTag = dur >= 1 ? `${Math.round(dur)}s` : `${Math.round(dur * 10) / 10}s`;
   let clips = 0;

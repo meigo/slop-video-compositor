@@ -28,113 +28,33 @@
   const showHint = $derived(!!hint && !isError && hint.trim().length > 0);
 </script>
 
-<div class="status-line" role="status">
-  <span class="project">
-    <FileText size={14} strokeWidth={2} class="file-icon" aria-hidden="true" />
-    <strong>{label}</strong>
+<!-- Hand-typed near-copy of STRIP: deliberately uses `gap-2 px-3` rather than STRIP's
+     `gap-1 px-2`. -->
+<div
+  class="flex h-7 shrink-0 items-center gap-2 border-t border-line bg-panel px-3 text-[11px] text-muted"
+  role="status"
+>
+  <span class="flex shrink-0 items-center gap-1">
+    <FileText size={14} strokeWidth={2} class="opacity-75" aria-hidden="true" />
+    <strong class="font-medium text-text">{label}</strong>
     {#if dirty}
-      <span class="dirty" title="Unsaved changes">•</span>
+      <span class="font-bold text-accent" title="Unsaved changes">•</span>
     {/if}
   </span>
-  <span class="sep">·</span>
-  <span class="status" class:error={isError}>
+  <span class="opacity-45" aria-hidden="true">·</span>
+  <span class="flex min-w-0 items-center gap-1 {isError ? 'text-danger' : ''}">
     {#if isError}
-      <CircleAlert size={15} strokeWidth={2} aria-hidden="true" />
+      <CircleAlert size={14} strokeWidth={2} class="shrink-0" aria-hidden="true" />
     {:else}
-      <Info size={15} strokeWidth={2} class="info-icon" aria-hidden="true" />
+      <Info size={14} strokeWidth={2} class="shrink-0 opacity-80" aria-hidden="true" />
     {/if}
-    <span class="status-text">{status}</span>
+    <span class="truncate">{status}</span>
   </span>
   {#if showHint}
-    <span class="sep">·</span>
-    <span class="hint" title={hint}>
-      <Lightbulb size={14} strokeWidth={2} aria-hidden="true" />
-      <span class="hint-text">{hint}</span>
+    <span class="opacity-45" aria-hidden="true">·</span>
+    <span class="flex min-w-0 flex-1 items-center gap-1" title={hint}>
+      <Lightbulb size={14} strokeWidth={2} class="shrink-0 text-accent" aria-hidden="true" />
+      <span class="truncate">{hint}</span>
     </span>
   {/if}
 </div>
-
-<style>
-  .status-line {
-    min-height: 1.4rem;
-    font-size: 0.85rem;
-    color: var(--muted);
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0 0.15rem;
-    min-width: 0;
-  }
-
-  .project {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    flex-shrink: 0;
-  }
-
-  .project :global(.file-icon) {
-    flex-shrink: 0;
-    opacity: 0.75;
-  }
-
-  .project strong {
-    color: var(--text);
-    font-weight: 600;
-  }
-
-  .dirty {
-    color: var(--warn);
-    font-weight: 700;
-  }
-
-  .sep {
-    opacity: 0.45;
-    flex-shrink: 0;
-  }
-
-  .status {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: var(--muted);
-    min-width: 0;
-  }
-
-  .status.error {
-    color: var(--danger);
-  }
-
-  .status :global(.info-icon) {
-    opacity: 0.8;
-    flex-shrink: 0;
-  }
-
-  .status-text {
-    min-width: 0;
-  }
-
-  .hint {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: var(--muted);
-    opacity: 0.92;
-    min-width: 0;
-    flex: 1 1 12rem;
-  }
-
-  .hint :global(svg) {
-    flex-shrink: 0;
-    opacity: 0.75;
-    color: var(--accent);
-  }
-
-  .hint-text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-</style>

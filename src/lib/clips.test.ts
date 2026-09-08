@@ -123,9 +123,7 @@ describe("overwriteWithClip", () => {
       sampleClip({ id: "a", timelineStart: 0, sourceIn: 0, sourceOut: 10 }),
       sampleClip({ id: "b", timelineStart: 5, sourceIn: 0, sourceOut: 10 }),
     );
-    p.tracks[1].clips.push(
-      sampleClip({ id: "hi", timelineStart: 0, sourceIn: 0, sourceOut: 20 }),
-    );
+    p.tracks[1].clips.push(sampleClip({ id: "hi", timelineStart: 0, sourceIn: 0, sourceOut: 20 }));
     const next = overwriteWithClip(p, "b");
     expect(next.tracks[1].clips[0]).toEqual(p.tracks[1].clips[0]);
     expect(next.tracks[0].clips.find((c) => c.id === "a")!.sourceOut).toBe(5);

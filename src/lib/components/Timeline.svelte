@@ -26,6 +26,7 @@
     trimClipOut,
   } from "$lib/clips";
   import { clipColorCssVars } from "$lib/clipColor";
+  import { DIVIDER, FIELD, HEADING, TEXT_BTN, toggleClass, toggleSquareClass } from "$lib/ui";
   import ClipFilmstrip from "$lib/components/ClipFilmstrip.svelte";
   import ClipWaveform from "$lib/components/ClipWaveform.svelte";
   import {
@@ -55,12 +56,7 @@
     projectDuration,
     setProjectDuration,
   } from "$lib/project";
-  import {
-    collectSnapTimes,
-    DEFAULT_SNAP_THRESHOLD,
-    snapClipStart,
-    snapTime,
-  } from "$lib/snap";
+  import { collectSnapTimes, DEFAULT_SNAP_THRESHOLD, snapClipStart, snapTime } from "$lib/snap";
   import { clamp, formatTimestamp } from "$lib/time";
   import { trackRowMetrics, type TrackRowSize } from "$lib/trackRow";
   import type { Project } from "$lib/types";
@@ -416,10 +412,9 @@
 
     const target = e.target as HTMLElement;
     const edge =
-      forceEdge ?? (target.closest("[data-edge]") as HTMLElement | null)?.dataset.edge as
-        | "in"
-        | "out"
-        | undefined;
+      forceEdge ??
+      ((target.closest("[data-edge]") as HTMLElement | null)?.dataset.edge as
+        "in" | "out" | undefined);
     const foundClip = p.tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
     if (!foundClip) return;
 
@@ -452,9 +447,7 @@
     dragClipId = clipId;
     // Multi move only for body drag (not trim edges)
     dragGroupIds =
-      dragKind === "move" && app.selectedClipIds.length > 1
-        ? [...app.selectedClipIds]
-        : [clipId];
+      dragKind === "move" && app.selectedClipIds.length > 1 ? [...app.selectedClipIds] : [clipId];
     dragBefore = snapshot;
     dragOriginX = e.clientX;
     dragOriginY = e.clientY;
@@ -597,8 +590,7 @@
         const primary = app.selectedClipId ? findClip(after, app.selectedClipId) : null;
         if (primary) app.selectedTrackId = after.tracks[primary.trackIndex]!.id;
       }
-      app.status =
-        newIds.length > 1 ? `Duplicated ${newIds.length} clips` : "Duplicated clip";
+      app.status = newIds.length > 1 ? `Duplicated ${newIds.length} clips` : "Duplicated clip";
       return;
     }
 
@@ -719,9 +711,7 @@
     }
   }
 
-  const hasSelection = $derived(
-    app.selectedClipIds.length > 0 || app.selectedClipId != null,
-  );
+  const hasSelection = $derived(app.selectedClipIds.length > 0 || app.selectedClipId != null);
   const markerCount = $derived((p.markers ?? []).length);
   const rangeActive = $derived(hasPlayRange());
   const bounds = $derived(playBounds());
@@ -738,10 +728,7 @@
       app.status = `Thumbs: ${err}`;
       return;
     }
-    if (
-      app.status.startsWith("Generating thumbs") ||
-      app.status.startsWith("Thumbs:")
-    ) {
+    if (app.status.startsWith("Generating thumbs") || app.status.startsWith("Thumbs:")) {
       app.status = "Thumbs ready";
     }
   }
@@ -785,28 +772,16 @@
   });
 
   /** Render-only peek — never starts ffmpeg (that would mutate state mid-paint). */
-  function filmstripForClip(
-    clip: (typeof p.tracks)[0]["clips"][0],
-  ): FilmstripReady | null {
+  function filmstripForClip(clip: (typeof p.tracks)[0]["clips"][0]): FilmstripReady | null {
     void filmstripTick;
     if (!app.showFilmstrips) return null;
-    return peekFilmstrip(
-      clip,
-      app.metaByPath.get(clip.sourcePath),
-      FILMSTRIP_H,
-    );
+    return peekFilmstrip(clip, app.metaByPath.get(clip.sourcePath), FILMSTRIP_H);
   }
 
-  function waveformForClip(
-    clip: (typeof p.tracks)[0]["clips"][0],
-  ): WaveformReady | null {
+  function waveformForClip(clip: (typeof p.tracks)[0]["clips"][0]): WaveformReady | null {
     void waveformTick;
     if (!app.showFilmstrips) return null;
-    return peekWaveform(
-      clip,
-      app.metaByPath.get(clip.sourcePath),
-      FILMSTRIP_H,
-    );
+    return peekWaveform(clip, app.metaByPath.get(clip.sourcePath), FILMSTRIP_H);
   }
 
   function onToggleFilmstrips() {
@@ -822,44 +797,52 @@
   }
 </script>
 
-<section class="timeline" aria-label="Timeline">
-  <div class="timeline-head">
-    <div class="head-left">
-      <span class="title">
-        <Layers size={15} strokeWidth={2} aria-hidden="true" />
-        Timeline
-      </span>
-      <span class="muted">
-        {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
-        · {clipCount} clip{clipCount === 1 ? "" : "s"}
-        · {markerCount} marker{markerCount === 1 ? "" : "s"}
-        · top = highest priority
-      </span>
-      <label
-        class="duration-field"
-        title="Sequence end (program out). Values shorter than media trim clips past that time."
-      >
-        <span class="muted">Length</span>
-        <input
-          class="compact mono"
-          type="number"
-          min="0"
-          step="0.1"
-          bind:value={durationInput}
-          onchange={applyDurationInput}
-          onkeydown={onDurationKey}
-          aria-label="Timeline length in seconds"
-        />
-        <span class="mono muted">s</span>
-        <span class="mono duration-label">{formatTimestamp(seqDuration)}</span>
-      </label>
-    </div>
-    <div class="head-right">
-      <label class="zoom">
-        <ZoomIn size={14} strokeWidth={2} class="zoom-icon" aria-hidden="true" />
-        <span class="muted">Zoom</span>
+<section class="flex h-full min-h-0 min-w-0 flex-col bg-ground" aria-label="Timeline">
+  <!-- Hand-typed near-copy of STRIP: deliberately uses `gap-2` rather than STRIP's `gap-1`, and
+       adds `overflow-x-auto` because this row overflows at ordinary window widths. The
+       `scrollbar-none` and the `::-webkit-scrollbar` rule below hide the scrollbar (a
+       classic, non-overlay scrollbar on Windows/WebView2 would otherwise take ~15px out of this
+       28px strip) while keeping it scrollable. -->
+  <div
+    class="scroll-strip flex h-7 shrink-0 scrollbar-none items-center gap-2 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
+  >
+    <h2 class="{HEADING} inline-flex items-center gap-1">
+      <Layers size={14} strokeWidth={2} aria-hidden="true" />
+      Timeline
+    </h2>
+    <span>
+      {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
+      · {clipCount} clip{clipCount === 1 ? "" : "s"}
+      · {markerCount} marker{markerCount === 1 ? "" : "s"}
+      · top = highest priority
+    </span>
+    <label
+      class="ml-2 inline-flex items-center gap-1"
+      title="Sequence end (program out). Values shorter than media trim clips past that time."
+    >
+      <span>Length</span>
+      <input
+        class="{FIELD} w-16"
+        type="number"
+        min="0"
+        step="0.1"
+        bind:value={durationInput}
+        onchange={applyDurationInput}
+        onkeydown={onDurationKey}
+        aria-label="Timeline length in seconds"
+      />
+      <span>s</span>
+      <span class="min-w-11 text-text tabular-nums">{formatTimestamp(seqDuration)}</span>
+    </label>
+    <div class="ml-auto flex shrink-0 items-center gap-1">
+      <label class="inline-flex items-center gap-1">
+        <ZoomIn size={14} strokeWidth={2} class="opacity-75" aria-hidden="true" />
+        <span>Zoom</span>
         <input
           type="range"
+          class="slider w-28"
+          style="--fill-from: 0%; --fill-to: {((pxPerSecond - MIN_PPS) / (MAX_PPS - MIN_PPS)) *
+            100}%"
           min={MIN_PPS}
           max={MAX_PPS}
           step="1"
@@ -867,21 +850,22 @@
           oninput={onZoomInput}
           aria-label="Timeline zoom pixels per second"
         />
-        <span class="mono muted">{Math.round(pxPerSecond)} px/s</span>
-        <button
-          type="button"
-          class="ghost zoom-fit"
-          onclick={fitZoomToWidth}
-          title="Fit sequence to timeline width (100%)"
-          aria-label="Fit sequence to timeline width"
-        >
-          <Maximize2 size={14} strokeWidth={2} aria-hidden="true" />
-          <span>Fit</span>
-        </button>
+        <span class="w-14 text-right tabular-nums">{Math.round(pxPerSecond)} px/s</span>
       </label>
       <button
         type="button"
-        class="ghost"
+        class={TEXT_BTN}
+        onclick={fitZoomToWidth}
+        title="Fit sequence to timeline width (100%)"
+        aria-label="Fit sequence to timeline width"
+      >
+        <Maximize2 size={14} strokeWidth={2} aria-hidden="true" />
+        <span>Fit</span>
+      </button>
+      <div class={DIVIDER} aria-hidden="true"></div>
+      <button
+        type="button"
+        class={TEXT_BTN}
         onclick={onAddTrack}
         title="Add video track"
         aria-label="Add track"
@@ -893,11 +877,19 @@
   </div>
 
   <!-- Discoverable edit tools (keyboard shortcuts still work). -->
-  <div class="timeline-tools" role="toolbar" aria-label="Timeline tools">
-    <div class="tool-group" role="group" aria-label="Navigate">
+  <!-- Hand-typed near-copy of STRIP: deliberately adds `overflow-x-auto` because this row
+       overflows at ordinary window widths. `scrollbar-none` and the `::-webkit-scrollbar`
+       rule below hide the scrollbar (a classic, non-overlay scrollbar on Windows/WebView2 would
+       otherwise take ~15px out of this 28px strip) while keeping it scrollable. -->
+  <div
+    class="scroll-strip flex h-7 shrink-0 scrollbar-none items-center gap-1 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
+    role="toolbar"
+    aria-label="Timeline tools"
+  >
+    <div class="flex items-center gap-1" role="group" aria-label="Navigate">
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={() => seekPrevCut()}
         title="Previous cut or marker ([)"
         aria-label="Previous cut or marker"
@@ -907,7 +899,7 @@
       </button>
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={() => seekNextCut()}
         title="Next cut or marker (])"
         aria-label="Next cut or marker"
@@ -916,37 +908,36 @@
         <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
-    <div class="tool-sep" aria-hidden="true"></div>
-    <div class="tool-group" role="group" aria-label="Edit">
+    <div class={DIVIDER} aria-hidden="true"></div>
+    <div class="flex items-center gap-1" role="group" aria-label="Edit">
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={splitSelectedAtPlayhead}
         disabled={!app.selectedClipId}
         title="Split selected clip at playhead (S)"
         aria-label="Split clip at playhead"
       >
-        <Scissors size={15} strokeWidth={2} aria-hidden="true" />
+        <Scissors size={16} strokeWidth={2} aria-hidden="true" />
         <span>Split</span>
       </button>
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={() => deleteSelectedClips()}
         disabled={!hasSelection}
         title="Delete selected clip(s) (Delete)"
         aria-label="Delete selected clips"
       >
-        <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+        <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
         <span>Delete</span>
       </button>
     </div>
-    <div class="tool-sep" aria-hidden="true"></div>
-    <div class="tool-group" role="group" aria-label="Display">
+    <div class={DIVIDER} aria-hidden="true"></div>
+    <div class="flex items-center gap-1" role="group" aria-label="Display">
       <button
         type="button"
-        class="ghost tool-btn"
-        class:on={app.showFilmstrips}
+        class={toggleClass(app.showFilmstrips)}
         onclick={onToggleFilmstrips}
         title={app.showFilmstrips
           ? "Hide filmstrips / audio waveforms (ffmpeg)"
@@ -955,56 +946,53 @@
         aria-pressed={app.showFilmstrips}
       >
         {#if app.showFilmstrips}
-          <Image size={15} strokeWidth={2} aria-hidden="true" />
+          <Image size={16} strokeWidth={2} aria-hidden="true" />
         {:else}
-          <ImageOff size={15} strokeWidth={2} aria-hidden="true" />
+          <ImageOff size={16} strokeWidth={2} aria-hidden="true" />
         {/if}
         <span>Thumbs</span>
       </button>
-      <span class="tool-sep-inline" aria-hidden="true"></span>
       {#each ["s", "m", "l"] as size (size)}
         <button
           type="button"
-          class="ghost tool-btn tool-btn-sq"
-          class:on={app.trackRowSize === size}
+          class={toggleSquareClass(app.trackRowSize === size)}
           onclick={() => setTrackRowSize(size as TrackRowSize)}
           title={trackRowMetrics(size as TrackRowSize).title}
           aria-label={trackRowMetrics(size as TrackRowSize).title}
           aria-pressed={app.trackRowSize === size}
         >
-          <span class="io-key">{trackRowMetrics(size as TrackRowSize).label}</span>
+          {trackRowMetrics(size as TrackRowSize).label}
         </button>
       {/each}
     </div>
-    <div class="tool-sep" aria-hidden="true"></div>
-    <div class="tool-group" role="group" aria-label="Play range">
+    <div class={DIVIDER} aria-hidden="true"></div>
+    <div class="flex items-center gap-1" role="group" aria-label="Play range">
+      <!-- warn: the play range is preview-only and never reaches the export. -->
       <button
         type="button"
-        class="ghost tool-btn"
-        class:on={app.playIn != null}
+        class={toggleClass(app.playIn != null, "bg-warn text-ground")}
         onclick={() => setPlayInAtPlayhead()}
         title="Set play-in at playhead (I) — preview only"
         aria-label="Set play in"
         aria-pressed={app.playIn != null}
       >
-        <span class="io-key">I</span>
+        <span class="font-bold">I</span>
         <span>In</span>
       </button>
       <button
         type="button"
-        class="ghost tool-btn"
-        class:on={app.playOut != null}
+        class={toggleClass(app.playOut != null, "bg-warn text-ground")}
         onclick={() => setPlayOutAtPlayhead()}
         title="Set play-out at playhead (O) — preview only"
         aria-label="Set play out"
         aria-pressed={app.playOut != null}
       >
-        <span class="io-key">O</span>
+        <span class="font-bold">O</span>
         <span>Out</span>
       </button>
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={() => clearPlayRange()}
         disabled={!rangeActive}
         title="Clear play range (Esc)"
@@ -1014,25 +1002,28 @@
         <span>Clear</span>
       </button>
       {#if rangeActive}
-        <span class="mono tool-hint" title="Preview plays only this range; export is unchanged">
+        <span
+          class="tool-hint tabular-nums"
+          title="Preview plays only this range; export is unchanged"
+        >
           {formatTimestamp(bounds.start)}–{formatTimestamp(bounds.end)}
         </span>
       {/if}
     </div>
-    <div class="tool-sep" aria-hidden="true"></div>
-    <div class="tool-group" role="group" aria-label="Markers">
+    <div class={DIVIDER} aria-hidden="true"></div>
+    <div class="flex items-center gap-1" role="group" aria-label="Markers">
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={() => addMarkerAtPlayhead()}
         title="Add marker at playhead (M) — click seek, double-click rename, Alt+click remove"
         aria-label="Add marker at playhead"
       >
-        <BookmarkPlus size={15} strokeWidth={2} aria-hidden="true" />
+        <BookmarkPlus size={16} strokeWidth={2} aria-hidden="true" />
         <span>Marker</span>
       </button>
       <span
-        class="tool-hint muted"
+        class="tool-hint"
         title="Markers are seek bookmarks (not exported). ⌥/Alt-drag duplicates clips."
       >
         dbl-click rename · ⌥-drag copy
@@ -1071,11 +1062,7 @@
       {/each}
     </div>
 
-    <div
-      class="scroll"
-      bind:this={scrollEl}
-      onwheel={onWheel}
-    >
+    <div class="scroll" bind:this={scrollEl} onwheel={onWheel}>
       <div class="content" style:width="{contentWidth}px">
         <div class="timeline-stack">
           <!-- Ruler (click + drag to scrub) -->
@@ -1102,26 +1089,26 @@
                 class="play-range"
                 style:left="{bounds.start * pxPerSecond}px"
                 style:width="{(bounds.end - bounds.start) * pxPerSecond}px"
-                title="Play range {formatTimestamp(bounds.start)} – {formatTimestamp(bounds.end)} (preview only)"
+                title="Play range {formatTimestamp(bounds.start)} – {formatTimestamp(
+                  bounds.end,
+                )} (preview only)"
                 aria-hidden="true"
               ></div>
+              <!-- Asymmetric half-wedges, so they differ from the playhead head in SHAPE: red on
+                   amber is the worst pair for the common colour blindnesses. -->
               {#if app.playIn != null}
                 <div
                   class="play-io in"
                   style:left="{bounds.start * pxPerSecond}px"
                   aria-hidden="true"
-                >
-                  I
-                </div>
+                ></div>
               {/if}
               {#if app.playOut != null}
                 <div
                   class="play-io out"
-                  style:left="{bounds.end * pxPerSecond}px"
+                  style:left="{bounds.end * pxPerSecond - 8}px"
                   aria-hidden="true"
-                >
-                  O
-                </div>
+                ></div>
               {/if}
             {/if}
             {#each p.markers ?? [] as marker (marker.id)}
@@ -1162,7 +1149,9 @@
                   type="button"
                   class="marker"
                   style:left="{marker.t * pxPerSecond}px"
-                  title="{marker.label} @ {formatTimestamp(marker.t)} — click seek, double-click rename, Alt+click remove"
+                  title="{marker.label} @ {formatTimestamp(
+                    marker.t,
+                  )} — click seek, double-click rename, Alt+click remove"
                   aria-label="Marker {marker.label}"
                   onpointerdown={(e) => {
                     // Keep hits on the marker (not ruler scrub / playhead).
@@ -1192,7 +1181,11 @@
           </div>
 
           <!-- Tracks / clips -->
-          <div class="lanes" bind:this={lanesEl} style:min-height="{displayTracks.length * TRACK_H}px">
+          <div
+            class="lanes"
+            bind:this={lanesEl}
+            style:min-height="{displayTracks.length * TRACK_H}px"
+          >
             {#each displayTracks as track (track.id)}
               <div
                 class="lane"
@@ -1209,8 +1202,7 @@
                   {@const usedW = Math.max(dur * pxPerSecond, 4)}
                   {@const mediaDur = app.metaByPath.get(clip.sourcePath)?.duration ?? 0}
                   {@const preSec = clip.sourceIn > 0 ? clip.sourceIn : 0}
-                  {@const postSec =
-                    mediaDur > clip.sourceOut ? mediaDur - clip.sourceOut : 0}
+                  {@const postSec = mediaDur > clip.sourceOut ? mediaDur - clip.sourceOut : 0}
                   {@const preW = preSec * pxPerSecond}
                   {@const postW = postSec * pxPerSecond}
                   {@const colorVars = clipColorCssVars(clip.sourcePath)}
@@ -1222,7 +1214,9 @@
                       class="clip-handle left"
                       class:active={isClipSelected(clip.id)}
                       style="{colorVars}; left: {usedLeft - preW}px; width: {preW}px"
-                      title="Trimmed head ({preSec.toFixed(2)}s) — drag left edge of clip to restore"
+                      title="Trimmed head ({preSec.toFixed(
+                        2,
+                      )}s) — drag left edge of clip to restore"
                       aria-hidden="true"
                     ></div>
                   {/if}
@@ -1231,7 +1225,9 @@
                       class="clip-handle right"
                       class:active={isClipSelected(clip.id)}
                       style="{colorVars}; left: {usedLeft + usedW}px; width: {postW}px"
-                      title="Trimmed tail ({postSec.toFixed(2)}s) — drag right edge of clip to restore"
+                      title="Trimmed tail ({postSec.toFixed(
+                        2,
+                      )}s) — drag right edge of clip to restore"
                       aria-hidden="true"
                     ></div>
                   {/if}
@@ -1320,6 +1316,7 @@
         <div
           class="markers"
           style:height="{RULER_H + displayTracks.length * TRACK_H}px"
+          style:--ruler-h="{RULER_H}px"
           aria-hidden="false"
         >
           <!-- Playhead (drag to scrub) -->
@@ -1367,7 +1364,9 @@
             aria-valuemax={Math.max(contentEnd + 3600, displayDuration)}
             aria-valuenow={displayDuration}
             aria-valuetext="{formatTimestamp(displayDuration)} ({displayDuration.toFixed(2)}s)"
-            title="Sequence end {formatTimestamp(displayDuration)} — drag right for black tail, left to trim clips past this time"
+            title="Sequence end {formatTimestamp(
+              displayDuration,
+            )} — drag right for black tail, left to trim clips past this time"
             onpointerdown={startDurationResize}
             onkeydown={(e) => {
               if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -1388,102 +1387,11 @@
 </section>
 
 <style>
-  .timeline {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.45rem 0.55rem 0.55rem;
-    height: 100%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    min-width: 0;
-    box-sizing: border-box;
-  }
-
-  .timeline-head {
-    flex: 0 0 auto;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem 1rem;
-  }
-
-  .head-left,
-  .head-right {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.55rem;
-  }
-
-  .title {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-  }
-
-  .muted {
-    color: var(--muted);
-    font-size: 0.85rem;
-  }
-
-  .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .zoom {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.85rem;
-  }
-
-  .zoom :global(.zoom-icon) {
-    flex-shrink: 0;
-    opacity: 0.75;
-  }
-
-  .zoom input[type="range"] {
-    width: 7rem;
-    accent-color: var(--accent);
-  }
-
-  .zoom-fit {
-    padding: 0.2em 0.45em;
-    font-size: 0.8rem;
-    font-weight: 500;
-  }
-
-  .head-right :global(button) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-
-  .duration-field {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    margin-left: 0.35rem;
-    font-size: 0.85rem;
-  }
-
-  .duration-field input {
-    width: 4.25rem;
-  }
-
-  .duration-label {
-    color: var(--text);
-    min-width: 3.2rem;
+  /* Both header strips overflow at ordinary window widths. `scrollbar-width: none` (set via
+     utility class) hides it on Firefox/Chromium; this hides it on WebKit/Blink, including
+     Windows/WebView2, where a classic scrollbar would otherwise take ~15px out of a 28px strip. */
+  .scroll-strip::-webkit-scrollbar {
+    display: none;
   }
 
   .timeline-body {
@@ -1492,19 +1400,16 @@
     align-items: flex-start;
     min-height: 0;
     min-width: 0;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    /* Vertical scroll when many tracks; horizontal stays in .scroll */
     overflow-x: hidden;
     overflow-y: auto;
-    background: var(--bg);
+    background: var(--color-ground);
   }
 
   .labels {
     flex: 0 0 auto;
     width: 52px;
-    border-right: 1px solid var(--border);
-    background: var(--surface);
+    border-right: 1px solid var(--color-line);
+    background: var(--color-panel);
     z-index: 2;
     position: sticky;
     left: 0;
@@ -1514,61 +1419,56 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 600;
-    font-size: 0.8rem;
-    color: var(--muted);
-    border-bottom: 1px solid var(--border);
+    gap: 4px;
+    font-size: 11px;
+    color: var(--color-muted);
+    border-bottom: 1px solid var(--color-line);
+    border-left: 2px solid transparent;
     cursor: pointer;
     user-select: none;
   }
 
   .label-row:hover {
-    background: var(--surface-2);
-    color: var(--text);
+    color: var(--color-text);
   }
 
+  /* Selection is the 2px left bar, reserved at all times so nothing moves. */
   .label-row.selected {
-    color: var(--accent);
-    background: rgba(91, 140, 255, 0.1);
+    border-left-color: var(--color-accent);
+    color: var(--color-text);
   }
 
   .label-row.solo {
-    color: var(--warn);
-    background: rgba(212, 160, 23, 0.12);
+    color: var(--color-text);
   }
 
   .label-row .track-name {
     pointer-events: none;
   }
 
+  /* Solo is session-only: warn, as a fixed 20px square like the audio editor's S flag. */
   .solo-badge {
-    margin-left: 0.2rem;
-    font-size: 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    font-size: 10px;
     font-weight: 700;
-    color: var(--warn);
+    color: var(--color-ground);
+    background: var(--color-warn);
     pointer-events: none;
   }
 
-  /* Empty timeline (no media on this track) — not the same as trimmed handles */
+  /* Gap hatch on tracks that hold clips. Stripes are text at 3%, so they track the palette. */
   .lane.has-gaps {
     background-image: repeating-linear-gradient(
       -45deg,
       transparent,
       transparent 6px,
-      rgba(255, 255, 255, 0.025) 6px,
-      rgba(255, 255, 255, 0.025) 12px
-    );
-  }
-
-  /* Selection tint must layer with hatch (shorthand `background` would wipe it). */
-  .lane.has-gaps.selected {
-    background-color: rgba(91, 140, 255, 0.06);
-    background-image: repeating-linear-gradient(
-      -45deg,
-      transparent,
-      transparent 6px,
-      rgba(255, 255, 255, 0.035) 6px,
-      rgba(255, 255, 255, 0.035) 12px
+      color-mix(in srgb, var(--color-text) 3%, transparent) 6px,
+      color-mix(in srgb, var(--color-text) 3%, transparent) 12px
     );
   }
 
@@ -1584,12 +1484,7 @@
     border-radius: 3px;
     pointer-events: none;
     z-index: 0;
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.12
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.12);
     border: 1px dashed hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.4);
     opacity: 0.9;
   }
@@ -1607,12 +1502,7 @@
   }
 
   .clip-handle.active {
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.18
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.18);
     border-color: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.55);
   }
 
@@ -1639,8 +1529,8 @@
     position: sticky;
     top: 0;
     z-index: 2;
-    background: var(--surface-2);
-    border-bottom: 1px solid var(--border);
+    background: var(--color-panel);
+    border-bottom: 1px solid var(--color-line);
     cursor: ew-resize;
     touch-action: none;
     user-select: none;
@@ -1670,21 +1560,23 @@
     pointer-events: auto;
   }
 
+  /* Ticks grow up from the bottom; labels sit at the top, 3px right of their tick. */
   .tick {
     position: absolute;
-    top: 0;
     bottom: 0;
-    border-left: 1px solid var(--border);
+    width: 1px;
+    height: 12px;
+    background: var(--color-line);
     pointer-events: none;
   }
 
   .tick-label {
     position: absolute;
-    top: 4px;
-    left: 4px;
-    font-size: 0.7rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    color: var(--muted);
+    bottom: 11px;
+    left: 3px;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-muted);
     white-space: nowrap;
   }
 
@@ -1697,8 +1589,8 @@
     flex-direction: column;
     align-items: flex-start;
     width: max-content;
-    min-width: 1.75rem;
-    max-width: 6rem;
+    min-width: 24px;
+    max-width: 96px;
     margin-left: -8px;
     padding: 1px 4px 0 3px;
     border: none;
@@ -1715,14 +1607,13 @@
     bottom: 0;
     left: 7px;
     width: 2px;
-    background: var(--warn);
+    background: var(--color-warn);
     opacity: 0.85;
     pointer-events: none;
   }
 
   .marker:hover::before {
     opacity: 1;
-    box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.35);
   }
 
   .marker-flag {
@@ -1731,29 +1622,27 @@
     flex: 0 0 auto;
     width: 0;
     height: 0;
-    margin-top: 0;
-    border-left: 10px solid var(--warn);
+    border-left: 10px solid var(--color-warn);
     border-right: 0 solid transparent;
     border-bottom: 9px solid transparent;
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
     pointer-events: none;
   }
 
   .marker-label {
     position: relative;
     z-index: 1;
-    max-width: 5rem;
+    max-width: 80px;
     margin-top: 1px;
     margin-left: 1px;
     padding: 0 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.65rem;
+    font-size: 10px;
     font-weight: 600;
-    line-height: 1.25;
-    color: #1a1408;
-    background: var(--warn);
+    line-height: 14px;
+    color: var(--color-ground);
+    background: var(--color-warn);
     border-radius: 2px;
     pointer-events: none;
   }
@@ -1768,132 +1657,51 @@
   .marker-rename {
     position: relative;
     z-index: 1;
-    width: 6.5rem;
-    min-width: 4rem;
-    max-width: 10rem;
+    width: 96px;
+    min-width: 64px;
+    max-width: 160px;
     margin: 1px 0 0 1px;
-    padding: 0.1em 0.3em;
-    font-size: 0.7rem;
-    font-weight: 600;
-    line-height: 1.25;
-    color: #1a1408;
-    background: #ffe6a0;
-    border: 1px solid #c4920f;
-    border-radius: 3px;
-    outline: none;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    padding: 0 4px;
+    height: 16px;
+    font-size: 10px;
+    line-height: 16px;
+    color: var(--color-text);
+    background: var(--color-raised);
+    border: none;
+    border-radius: 4px;
   }
 
-  .marker-rename:focus {
-    border-color: var(--accent);
-  }
-
-  .timeline-tools {
-    flex: 0 0 auto;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.35rem 0.5rem;
-    padding: 0.3rem 0.35rem;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-  }
-
-  .tool-group {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.3rem;
-  }
-
-  .tool-sep {
-    width: 1px;
-    height: 1.35rem;
-    background: var(--border);
-    margin: 0 0.15rem;
-  }
-
-  .timeline-tools :global(.tool-btn) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    min-height: 1.85rem;
-    padding: 0.25em 0.55em;
-    font-size: 0.8rem;
-    font-weight: 500;
-  }
-
-  .timeline-tools :global(.tool-btn.on) {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-
-  .timeline-tools :global(.tool-btn-sq) {
-    min-width: 1.85rem;
-    padding-left: 0.4em;
-    padding-right: 0.4em;
-    justify-content: center;
-  }
-
-  .tool-sep-inline {
-    width: 1px;
-    height: 1.2rem;
-    background: var(--border);
-    margin: 0 0.1rem;
-  }
-
-  .io-key {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-
-  .tool-hint {
-    font-size: 0.72rem;
-    max-width: 14rem;
-    line-height: 1.2;
-  }
-
+  /* warn: the play range is preview-only. Wash in the ruler, 1px lines, 8px half-wedges. */
   .play-range {
     position: absolute;
     top: 0;
     bottom: 0;
-    background: rgba(91, 140, 255, 0.18);
-    border-left: 2px solid var(--accent);
-    border-right: 2px solid var(--accent);
+    background: color-mix(in srgb, var(--color-warn) 15%, transparent);
+    border-left: 1px solid var(--color-warn);
+    border-right: 1px solid var(--color-warn);
     pointer-events: none;
     z-index: 1;
   }
 
   .play-io {
     position: absolute;
-    top: 1px;
-    z-index: 2;
-    min-width: 0.9rem;
-    padding: 0 2px;
-    font-size: 0.65rem;
-    font-weight: 700;
-    line-height: 1.15;
-    color: #fff;
-    background: var(--accent);
-    border-radius: 2px;
+    top: 0;
+    width: 8px;
+    height: 8px;
+    background: var(--color-warn);
     pointer-events: none;
-    transform: translateX(-50%);
+    z-index: 2;
   }
 
   .play-io.in {
-    transform: translateX(0);
+    clip-path: polygon(0 0, 100% 0, 0 100%);
   }
 
   .play-io.out {
-    transform: translateX(-100%);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
   }
 
+  /* .tool-hint carries no base styling — the class survives purely so it can be hidden below. */
   @media (max-width: 900px) {
     .tool-hint {
       display: none;
@@ -1906,12 +1714,8 @@
 
   .lane {
     position: relative;
-    border-bottom: 1px solid var(--border);
-    background-color: var(--bg);
-  }
-
-  .lane.selected {
-    background-color: rgba(91, 140, 255, 0.06);
+    border-bottom: 1px solid var(--color-line);
+    background-color: var(--color-ground);
   }
 
   .clip {
@@ -1925,14 +1729,8 @@
     z-index: 1;
     display: flex;
     align-items: center;
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.28
-    );
-    border: 1px solid
-      hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.55);
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.28);
+    border: 1px solid hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.55);
     border-left: 3px solid
       hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.95);
     border-radius: 4px;
@@ -1945,12 +1743,7 @@
   }
 
   .clip.has-filmstrip {
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.18
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.18);
   }
 
   .clip.has-filmstrip::after {
@@ -1967,50 +1760,22 @@
   }
 
   .clip:hover {
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.4
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.4);
   }
 
   .clip.has-filmstrip:hover {
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.22
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.22);
   }
 
+  /* Selection is the accent OUTLINE; the fill stays calm so hue keeps meaning "which file". */
   .clip.active {
-    border-color: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc((var(--clip-l) + 8) * 1%),
-      0.95
-    );
-    border-left-color: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc((var(--clip-l) + 10) * 1%),
-      1
-    );
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.52
-    );
-    box-shadow: 0 0 0 1px
-      hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.85);
+    outline: 1px solid var(--color-accent);
+    outline-offset: -1px;
   }
 
+  /* The clip the inspector edits, among a multi-selection. */
   .clip.primary {
-    box-shadow:
-      0 0 0 1px hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.85),
-      0 0 0 3px rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 0 2px var(--color-accent);
   }
 
   .clip.dragging {
@@ -2030,7 +1795,7 @@
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
-    margin-left: 0.2rem;
+    margin-left: 3px;
     opacity: 0.9;
     pointer-events: none;
     position: relative;
@@ -2044,8 +1809,8 @@
   .clip-label {
     flex: 1;
     min-width: 0;
-    padding: 0 0.35rem;
-    font-size: 0.75rem;
+    padding: 0 5px;
+    font-size: 11px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2064,21 +1829,19 @@
     position: relative;
     z-index: 2;
     background: transparent;
-    z-index: 2;
     touch-action: none;
   }
 
   .edge:hover,
   .edge:active {
-    background: rgba(255, 255, 255, 0.18);
+    background: color-mix(in srgb, var(--color-text) 18%, transparent);
   }
 
   .playhead {
     position: absolute;
     top: 0;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--danger);
+    width: 1px;
+    background: var(--color-danger);
     cursor: ew-resize;
     touch-action: none;
     outline: none;
@@ -2089,7 +1852,7 @@
   }
 
   .playhead:focus-visible .playhead-hit {
-    background: rgba(240, 113, 120, 0.18);
+    background: color-mix(in srgb, var(--color-danger) 18%, transparent);
   }
 
   /*
@@ -2099,22 +1862,23 @@
    */
   .playhead-hit {
     position: absolute;
-    top: 28px; /* = RULER_H */
-    left: -5px;
+    top: var(--ruler-h);
+    left: -6px;
     width: 12px;
-    height: calc(100% - 28px);
+    height: calc(100% - var(--ruler-h));
     background: transparent;
   }
 
+  /* 12 wide × 6 tall: half-width equals height, so the point is a right angle. */
   .playhead-head {
     position: absolute;
     top: 0;
-    left: -5px;
+    left: -6px;
     width: 0;
     height: 0;
     border-left: 6px solid transparent;
     border-right: 6px solid transparent;
-    border-top: 9px solid var(--danger);
+    border-top: 6px solid var(--color-danger);
     filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8));
     pointer-events: none;
   }
@@ -2130,12 +1894,12 @@
 
   .duration-handle.active .duration-handle-bar,
   .duration-handle:hover .duration-handle-bar {
-    background: var(--accent-hover);
+    background: var(--color-accent-hover);
   }
 
   .duration-handle.preview-trim .duration-handle-bar,
   .duration-handle.preview-trim .duration-handle-grip {
-    background: var(--warn);
+    background: var(--color-warn);
   }
 
   .duration-handle-bar {
@@ -2144,7 +1908,7 @@
     bottom: 0;
     left: 4px;
     width: 2px;
-    background: var(--accent);
+    background: var(--color-accent);
   }
 
   .duration-handle-grip {
@@ -2154,12 +1918,13 @@
     width: 10px;
     height: 16px;
     border-radius: 2px;
-    background: var(--accent);
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+    background: var(--color-accent);
+    border: 1px solid var(--color-line);
   }
 
   .duration-handle:focus-visible .duration-handle-grip {
-    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+    box-shadow:
+      0 0 0 2px var(--color-ground),
+      0 0 0 4px var(--color-accent);
   }
 </style>

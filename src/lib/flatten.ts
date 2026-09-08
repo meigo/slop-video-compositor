@@ -9,10 +9,7 @@ import type { Project, Segment, SegmentBedAudio, SourceMeta } from "./types";
  * Audio bed: topmost unmuted audio-only clip, mixed under picture on export.
  * Audio-only alone (no video) → black picture + that source as the clip.
  */
-export function flattenProject(
-  project: Project,
-  metaByPath: Map<string, SourceMeta>,
-): Segment[] {
+export function flattenProject(project: Project, metaByPath: Map<string, SourceMeta>): Segment[] {
   const T = projectDuration(project);
   if (T <= 0) return [];
 
@@ -24,9 +21,7 @@ export function flattenProject(
     }
   }
 
-  const sorted = [...times]
-    .filter((t) => t >= 0 && t <= T)
-    .sort((a, b) => a - b);
+  const sorted = [...times].filter((t) => t >= 0 && t <= T).sort((a, b) => a - b);
 
   const raw: Segment[] = [];
   for (let i = 0; i < sorted.length - 1; i++) {

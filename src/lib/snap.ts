@@ -49,11 +49,7 @@ export function nearestSnap(
 }
 
 /** Snap a time to the nearest target within threshold; otherwise return `t`. */
-export function snapTime(
-  t: number,
-  targets: number[],
-  threshold = DEFAULT_SNAP_THRESHOLD,
-): number {
+export function snapTime(t: number, targets: number[], threshold = DEFAULT_SNAP_THRESHOLD): number {
   return nearestSnap(t, targets, threshold)?.t ?? t;
 }
 

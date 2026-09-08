@@ -10,6 +10,7 @@
   import Volume2 from "@lucide/svelte/icons/volume-2";
   import VolumeX from "@lucide/svelte/icons/volume-x";
   import { formatTimestamp } from "$lib/time";
+  import { BTN, toggleIconClass } from "$lib/ui";
 
   interface Props {
     playhead: number;
@@ -46,11 +47,13 @@
   const ICON = 16;
 </script>
 
-<div class="transport">
+<!-- Hand-typed near-copy of STRIP: deliberately drops STRIP's `text-[11px] text-muted`, or the
+     `text-sm` time readout inside this bar would inherit muted grey. -->
+<div class="flex h-7 shrink-0 items-center gap-1 border-t border-line bg-panel px-2">
   {#if onHome}
     <button
       type="button"
-      class="ghost"
+      class={BTN}
       onclick={onHome}
       title="Go to start (Home)"
       aria-label="Go to start"
@@ -61,7 +64,7 @@
   {#if onPrevCut}
     <button
       type="button"
-      class="ghost"
+      class={BTN}
       onclick={onPrevCut}
       title="Previous cut or marker ([)"
       aria-label="Previous cut or marker"
@@ -71,7 +74,7 @@
   {/if}
   <button
     type="button"
-    class="ghost"
+    class={BTN}
     onclick={onTogglePlay}
     title={playing ? "Pause (Space)" : "Play (Space)"}
     aria-label={playing ? "Pause" : "Play"}
@@ -82,13 +85,19 @@
       <Play size={ICON} strokeWidth={2} aria-hidden="true" />
     {/if}
   </button>
-  <button type="button" class="ghost" onclick={onStop} title="Stop and return to start" aria-label="Stop">
-    <Square size={15} strokeWidth={2.25} aria-hidden="true" />
+  <button
+    type="button"
+    class={BTN}
+    onclick={onStop}
+    title="Stop and return to start"
+    aria-label="Stop"
+  >
+    <Square size={ICON} strokeWidth={2} aria-hidden="true" />
   </button>
   {#if onNextCut}
     <button
       type="button"
-      class="ghost"
+      class={BTN}
       onclick={onNextCut}
       title="Next cut or marker (])"
       aria-label="Next cut or marker"
@@ -99,7 +108,7 @@
   {#if onEnd}
     <button
       type="button"
-      class="ghost"
+      class={BTN}
       onclick={onEnd}
       title="Go to end (End)"
       aria-label="Go to end"
@@ -109,8 +118,7 @@
   {/if}
   <button
     type="button"
-    class="ghost"
-    class:on={loop}
+    class={toggleIconClass(loop)}
     onclick={onToggleLoop}
     title={loop ? "Loop playback: on (L)" : "Loop playback: off (L)"}
     aria-label="Loop playback"
@@ -118,11 +126,12 @@
   >
     <Repeat size={ICON} strokeWidth={2} aria-hidden="true" />
   </button>
+  <!-- warn, not accent: preview mute is session-only and never reaches the export. -->
   <button
     type="button"
-    class="ghost"
+    class={toggleIconClass(muted, "bg-warn text-ground")}
     onclick={onToggleMute}
-    title={muted ? "Unmute preview" : "Mute preview"}
+    title={muted ? "Unmute preview" : "Mute preview (preview only)"}
     aria-label={muted ? "Unmute" : "Mute"}
     aria-pressed={muted}
   >
@@ -132,45 +141,7 @@
       <Volume2 size={ICON} strokeWidth={2} aria-hidden="true" />
     {/if}
   </button>
-  <span class="time" aria-label="Playhead time">
-    {formatTimestamp(playhead)}
-    <span class="sep">/</span>
-    {formatTimestamp(duration)}
+  <span class="ml-2 w-28 text-sm tabular-nums" aria-label="Playhead time">
+    {formatTimestamp(playhead)}<span class="text-muted"> / {formatTimestamp(duration)}</span>
   </span>
 </div>
-
-<style>
-  .transport {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.15rem;
-  }
-
-  .transport :global(button) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2.1rem;
-    padding: 0.4em 0.55em;
-  }
-
-  /* Ghost buttons are already --text; an active toggle reads as accent. */
-  .transport :global(button.on) {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-
-  .time {
-    margin-left: 0.5rem;
-    font-variant-numeric: tabular-nums;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.9rem;
-    color: var(--muted);
-  }
-
-  .sep {
-    opacity: 0.5;
-    margin: 0 0.2rem;
-  }
-</style>

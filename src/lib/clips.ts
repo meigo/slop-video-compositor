@@ -227,11 +227,7 @@ export function duplicateClipsByDelta(
   return next;
 }
 
-export function moveClipsByDelta(
-  project: Project,
-  clipIds: string[],
-  deltaT: number,
-): Project {
+export function moveClipsByDelta(project: Project, clipIds: string[], deltaT: number): Project {
   const ids = [...new Set(clipIds)].filter((id) => findClip(project, id));
   if (ids.length === 0 || !Number.isFinite(deltaT) || deltaT === 0) return project;
 
