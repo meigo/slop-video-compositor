@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { colorToSolid } from "$lib/clipColor";
   import Inspector from "$lib/components/Inspector.svelte";
   import MissingDeps from "$lib/components/MissingDeps.svelte";
   import Preview from "$lib/components/Preview.svelte";
@@ -45,6 +46,7 @@
     selectedClip,
     selectedClipDurationSecs,
     selectedMeta,
+    projectClipColors,
     setCanvasSize,
     setPlayInAtPlayhead,
     setPlayOutAtPlayhead,
@@ -62,6 +64,7 @@
   const p = $derived(project());
   const clip = $derived(selectedClip());
   const meta = $derived(selectedMeta());
+  const swatch = $derived(clip ? colorToSolid(projectClipColors().get(clip.sourcePath)!) : "");
   const dur = $derived(duration());
   const clipDur = $derived(selectedClipDurationSecs());
   const undoOk = $derived(canUndo(app.history));
@@ -403,6 +406,7 @@
       <Inspector
         {clip}
         {meta}
+        {swatch}
         {basename}
         {truncateMiddle}
         onUpdate={updateSelectedClipFields}

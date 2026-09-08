@@ -6,6 +6,7 @@ import {
   findClip,
   overwriteWithClip,
 } from "$lib/clips";
+import { clipColorsForPaths, type ClipColor } from "$lib/clipColor";
 import { nextCut, prevCut } from "$lib/cuts";
 import { effectivePlayBounds, hasExplicitPlayRange, type PlayBounds } from "$lib/playRange";
 import { DEFAULT_TRACK_ROW_SIZE, isTrackRowSize, type TrackRowSize } from "$lib/trackRow";
@@ -132,6 +133,14 @@ export function selectedClip(): Clip | null {
   const id = app.selectedClipId;
   if (!id) return null;
   return findClip(project(), id)?.clip ?? null;
+}
+
+/**
+ * Source→colour for every clip in the project. Assigned across the whole set at once so
+ * two files never share a slot; callers hold the result rather than calling per clip.
+ */
+export function projectClipColors(): Map<string, ClipColor> {
+  return clipColorsForPaths(project().tracks.flatMap((t) => t.clips.map((c) => c.sourcePath)));
 }
 
 export function selectedMeta(): SourceMeta | null {

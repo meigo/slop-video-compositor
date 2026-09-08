@@ -6,7 +6,6 @@
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Volume2 from "@lucide/svelte/icons/volume-2";
   import VolumeX from "@lucide/svelte/icons/volume-x";
-  import { clipColorSolid } from "$lib/clipColor";
   import NumberField from "$lib/components/NumberField.svelte";
   import { formatTimestamp, roundTo } from "$lib/time";
   import type { Clip, SourceMeta } from "$lib/types";
@@ -24,6 +23,8 @@
   interface Props {
     clip: Clip | null;
     meta: SourceMeta | null;
+    /** Timeline colour for this clip's source, assigned across the whole project. */
+    swatch: string;
     basename: (path: string) => string;
     truncateMiddle: (name: string, maxLen?: number) => string;
     onUpdate: (patch: {
@@ -43,6 +44,7 @@
   let {
     clip,
     meta,
+    swatch,
     basename,
     truncateMiddle,
     onUpdate,
@@ -69,7 +71,7 @@
         <div class="flex min-w-0 items-center gap-1.5" title={clip.sourcePath}>
           <span
             class="size-2.5 shrink-0 rounded-sm border border-line"
-            style:background={clipColorSolid(clip.sourcePath)}
+            style:background={swatch}
             title="Timeline color for this source file"
             aria-hidden="true"
           ></span>

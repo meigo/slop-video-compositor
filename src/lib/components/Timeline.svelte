@@ -29,7 +29,7 @@
     trimClipIn,
     trimClipOut,
   } from "$lib/clips";
-  import { clipColorCssVars } from "$lib/clipColor";
+  import { colorToVars } from "$lib/clipColor";
   import { BTN, DIVIDER, FIELD, toggleClass, toggleIconClass } from "$lib/ui";
   import ClipFilmstrip from "$lib/components/ClipFilmstrip.svelte";
   import ClipWaveform from "$lib/components/ClipWaveform.svelte";
@@ -78,6 +78,7 @@
     isClipSelected,
     playBounds,
     project,
+    projectClipColors,
     renameMarkerLabel,
     seekNextCut,
     seekPrevCut,
@@ -165,6 +166,8 @@
   const contentWidth = $derived(Math.ceil(endTime * pxPerSecond) + DURATION_HANDLE_PX);
   /** Highest priority (last array index) at top of UI. */
   const displayTracks = $derived([...p.tracks].reverse());
+  /** One assignment for the whole project, so two sources never share a colour. */
+  const clipColors = $derived(projectClipColors());
 
   $effect(() => {
     // Keep the number field in sync when duration changes elsewhere
@@ -1262,7 +1265,7 @@
                   {@const postSec = mediaDur > clip.sourceOut ? mediaDur - clip.sourceOut : 0}
                   {@const preW = preSec * pxPerSecond}
                   {@const postW = postSec * pxPerSecond}
-                  {@const colorVars = clipColorCssVars(clip.sourcePath)}
+                  {@const colorVars = colorToVars(clipColors.get(clip.sourcePath)!)}
                   {@const strip = filmstripForClip(clip)}
                   {@const wave = waveformForClip(clip)}
                   <!-- Trimmed source still on disk: dim handles around the used range -->
@@ -1812,7 +1815,7 @@
   }
 
   .clip {
-    /* Per-source colors via --clip-h/s/l (clipColorCssVars); fallback = accent blue */
+    /* Per-source colors set inline from projectClipColors(); fallback = accent blue */
     --clip-h: 217;
     --clip-s: 78;
     --clip-l: 62;
