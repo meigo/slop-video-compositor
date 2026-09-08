@@ -21,8 +21,13 @@ Tailwind 4 with the family `@theme` tokens, adopted incrementally:
   in `vite.config.js`.
 - `prettier`, `prettier-plugin-svelte`, `prettier-plugin-tailwindcss` with the audio editor's
   `.prettierrc.json` (printWidth 100, `tailwindStylesheet: ./src/app.css`) so class strings sort
-  the same way in both apps. `npm run format` / `format:check` scripts. No ESLint — the compositor
-  has none today and this work does not add a linter.
+  the same way in both apps. `npm run format` / `format:check` scripts.
+- ESLint 10 flat config copied from the audio editor (`@eslint/js`, `typescript-eslint`,
+  `eslint-plugin-svelte`, `globals`, `eslint-config-prettier`, `eslint-plugin-better-tailwindcss`)
+  with `npm run lint`. The reason is one rule: `better-tailwindcss/no-conflicting-classes` as an
+  error. Two utilities fighting over one property in a class string is decided by Tailwind's emit
+  order, not the markup, and three such conflicts were found in this very plan by hand. Lint
+  warnings that pre-exist in the TypeScript are reported, not fixed, in this work.
 - `src/app.css` becomes the audio editor's stylesheet: `@import "tailwindcss"`, the `@theme` block
   with **identical hex values**, `:root { color-scheme: dark; accent-color }`, the global
   `:focus-visible` ring, `html/body` height reset, `overscroll-behavior: none`, and the

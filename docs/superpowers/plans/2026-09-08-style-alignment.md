@@ -82,6 +82,105 @@ docs
 temp
 ```
 
+- [ ] **Step 2b: Install ESLint and add the config**
+
+```bash
+npm install -D eslint@^10.10.0 @eslint/js@^10 typescript-eslint@^8.69.0 eslint-plugin-svelte@^3.23.0 globals@^16.5.0 eslint-config-prettier@^10.1.8 eslint-plugin-better-tailwindcss@^4.7.0
+```
+
+If `@eslint/js@^10` does not resolve, use the major that matches the installed `eslint` (`npm view eslint version`).
+
+Add to `package.json` scripts after `format:check`:
+
+```json
+    "lint": "eslint src/"
+```
+
+Create `eslint.config.js` in the repo root:
+
+```js
+import eslint from "@eslint/js";
+import tseslint from "typescript-eslint";
+import svelte from "eslint-plugin-svelte";
+import svelteConfig from "./svelte.config.js";
+import globals from "globals";
+import prettier from "eslint-config-prettier";
+import betterTailwind from "eslint-plugin-better-tailwindcss";
+
+// Mirrors slop-audio-editor/eslint.config.js so the family lints the same way.
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  ...svelte.configs.recommended,
+  {
+    languageOptions: { globals: { ...globals.browser } },
+  },
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+      "@typescript-eslint/no-explicit-any": "warn",
+      "no-constant-condition": "warn",
+      "prefer-const": ["warn", { destructuring: "all" }],
+    },
+  },
+  {
+    files: ["**/*.svelte", "**/*.svelte.ts", "**/*.svelte.js"],
+    languageOptions: {
+      parserOptions: {
+        parser: tseslint.parser,
+        extraFileExtensions: [".svelte"],
+        svelteConfig,
+      },
+    },
+  },
+  {
+    rules: {
+      // svelte-check owns compiler + a11y diagnostics.
+      "svelte/valid-compile": "off",
+      // Drag gestures and the preview canvas write element geometry directly on purpose.
+      "svelte/no-dom-manipulating": "off",
+    },
+  },
+  {
+    files: ["**/*.svelte"],
+    rules: {
+      "prefer-const": "off",
+      "svelte/prefer-const": ["warn", { destructuring: "all" }],
+    },
+  },
+  prettier,
+  ...svelte.configs.prettier,
+  {
+    files: ["**/*.test.ts"],
+    languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    // Only the conflict/duplicate rules: two classes fighting over one property is decided by
+    // Tailwind's emit order, not by the markup, and reads as a control that silently does nothing.
+    files: ["**/*.svelte", "**/*.html"],
+    plugins: { "better-tailwindcss": betterTailwind },
+    settings: {
+      "better-tailwindcss": { entryPoint: "src/app.css" },
+    },
+    rules: {
+      "better-tailwindcss/no-conflicting-classes": "error",
+      "better-tailwindcss/no-duplicate-classes": "warn",
+      "better-tailwindcss/enforce-canonical-classes": "warn",
+      "better-tailwindcss/no-unnecessary-whitespace": "warn",
+    },
+  },
+  {
+    ignores: ["build/", ".svelte-kit/", "src-tauri/"],
+  },
+);
+```
+
+Run: `npm run lint`
+Expected: exit code 0 with **no errors**. Warnings in existing TypeScript are allowed; note their count in the task report and do not fix them (they are outside this work). If any rule reports an *error* on existing code that is not a Tailwind conflict, downgrade that one rule to `"warn"` in the config with a one-line comment and mention it in the report.
+
 - [ ] **Step 3: Register the Vite plugin**
 
 In `vite.config.js`, add the import at the top and the plugin after `sveltekit()`:
@@ -334,8 +433,8 @@ Expected: the app renders as before, with slightly darker ground and lighter pan
 - [ ] **Step 7: Commit**
 
 ```bash
-git add package.json package-lock.json vite.config.js .prettierrc.json .prettierignore src/app.css src/lib/ui.ts src/routes/+page.svelte
-git commit -m "style: add Tailwind with the family tokens and a legacy bridge"
+git add package.json package-lock.json vite.config.js .prettierrc.json .prettierignore eslint.config.js src/app.css src/lib/ui.ts src/routes/+page.svelte
+git commit -m "style: add Tailwind, prettier and eslint with the family tokens and a legacy bridge"
 ```
 
 ---
@@ -560,8 +659,8 @@ Add to the script imports:
 
 - [ ] **Step 5: Verify**
 
-Run: `npm run check && npm test`
-Expected: `0 ERRORS 0 WARNINGS`; 166 tests pass.
+Run: `npm run check && npm run lint && npm test`
+Expected: `0 ERRORS 0 WARNINGS` from svelte-check; lint exits 0 with no errors; 166 tests pass.
 
 Browser at `http://localhost:1420`: the window is edge to edge with no rounded cards; the ffmpeg banner is a flush red-tinted strip at the top; the status line is a 28px panel strip at the bottom reading "Untitled · Deps check failed…" in danger; the splitter is a thin panel strip with a short grip. The toolbar, inspector and timeline still have their old chip buttons (migrated in Tasks 3–6).
 
@@ -871,8 +970,8 @@ Remove everything from `<style>` to `</style>`.
 
 - [ ] **Step 4: Verify**
 
-Run: `npm run check && npm test`
-Expected: `0 ERRORS 0 WARNINGS`; 166 tests pass.
+Run: `npm run check && npm run lint && npm test`
+Expected: `0 ERRORS 0 WARNINGS` from svelte-check; lint exits 0 with no errors; 166 tests pass.
 
 Browser: a 44px panel bar. Left to right: "File ▾" text trigger, save icon, divider, "Import" with film icon, a chevron trigger, divider, undo and redo icons, then far right "1920×1080 ▾", divider, a blue filled Export button (disabled at 50% because ffmpeg is missing). Click File: dropdown on panel with a line border, items highlight raised on hover, ⌘O and ⌘S right-aligned in muted. Escape closes it. Click the import chevron: "PLACE CLIPS" heading, the checked placement in accent text. Click the canvas trigger: W and H raised fields, four preset toggles with the matching one filled accent. Nothing in the bar is taller than 24px.
 
@@ -1148,8 +1247,8 @@ Leave the `.decoder` rule and its comment exactly as they are.
 
 - [ ] **Step 5: Verify**
 
-Run: `npm run check && npm test`
-Expected: clean; 166 pass.
+Run: `npm run check && npm run lint && npm test`
+Expected: svelte-check clean; lint exits 0 with no errors; 166 pass.
 
 Browser: under the preview a 28px panel strip with seven 24px icon buttons and a `00:00 / 00:00` readout, total in muted. Click Loop: it fills blue. Click mute: it fills amber with the crossed speaker. The preview area is a subtle ground/panel checkerboard with the black output frame outlined in raised, a small "1920×1080" pill top-left and a "fit" pill bottom-right.
 
@@ -1369,8 +1468,8 @@ Remove everything from `<style>` to `</style>`.
 
 - [ ] **Step 4: Verify**
 
-Run: `npm run check && npm test`
-Expected: clean; 166 pass.
+Run: `npm run check && npm run lint && npm test`
+Expected: svelte-check clean; lint exits 0 with no errors; 166 pass.
 
 Browser: the right column is panel-coloured with a 28px "Inspector" strip and "Select a clip to edit" in muted. With a clip selected (Tauri dev): "SOURCE" heading, swatch + name, meta line, bordered Relink… / Reveal; a rule; rows with right-aligned labels and raised right-aligned fields; a Mute toggle that fills blue when on; a rule; "TRANSFORM" with Scale / X / Y and the bordered Reset transform.
 
@@ -1621,8 +1720,8 @@ Delete the rules listed in **Files** above. Replace the deleted `@media (max-wid
 
 - [ ] **Step 4: Verify**
 
-Run: `npm run check && npm test`
-Expected: clean; 166 pass. If svelte-check warns about an unused CSS selector, delete that selector.
+Run: `npm run check && npm run lint && npm test`
+Expected: svelte-check clean; lint exits 0 with no errors; 166 pass. If svelte-check warns about an unused CSS selector, delete that selector.
 
 Browser: the timeline area has two 28px panel strips. Top: "TIMELINE" with counts, a raised Length field, then right-aligned Zoom with a thin slider and blue thumb, Fit, a divider, "+ Track". Second strip: Prev Next | Split Delete | Thumbs S M L | I In O Out Clear | Marker + hint, all 24px tall. Thumbs and M are filled blue. Click In: it fills amber. The body below still has its legacy look (Task 7).
 
