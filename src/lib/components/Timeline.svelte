@@ -26,6 +26,7 @@
     trimClipOut,
   } from "$lib/clips";
   import { clipColorCssVars } from "$lib/clipColor";
+  import { DIVIDER, FIELD, HEADING, TEXT_BTN, toggleClass, toggleSquareClass } from "$lib/ui";
   import ClipFilmstrip from "$lib/components/ClipFilmstrip.svelte";
   import ClipWaveform from "$lib/components/ClipWaveform.svelte";
   import {
@@ -822,44 +823,44 @@
   }
 </script>
 
-<section class="timeline" aria-label="Timeline">
-  <div class="timeline-head">
-    <div class="head-left">
-      <span class="title">
-        <Layers size={15} strokeWidth={2} aria-hidden="true" />
-        Timeline
-      </span>
-      <span class="muted">
-        {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
-        · {clipCount} clip{clipCount === 1 ? "" : "s"}
-        · {markerCount} marker{markerCount === 1 ? "" : "s"}
-        · top = highest priority
-      </span>
-      <label
-        class="duration-field"
-        title="Sequence end (program out). Values shorter than media trim clips past that time."
-      >
-        <span class="muted">Length</span>
-        <input
-          class="compact mono"
-          type="number"
-          min="0"
-          step="0.1"
-          bind:value={durationInput}
-          onchange={applyDurationInput}
-          onkeydown={onDurationKey}
-          aria-label="Timeline length in seconds"
-        />
-        <span class="mono muted">s</span>
-        <span class="mono duration-label">{formatTimestamp(seqDuration)}</span>
-      </label>
-    </div>
-    <div class="head-right">
-      <label class="zoom">
-        <ZoomIn size={14} strokeWidth={2} class="zoom-icon" aria-hidden="true" />
-        <span class="muted">Zoom</span>
+<section class="flex h-full min-h-0 min-w-0 flex-col bg-ground" aria-label="Timeline">
+  <div class="flex h-7 shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted">
+    <span class="{HEADING} inline-flex items-center gap-1">
+      <Layers size={14} strokeWidth={2} aria-hidden="true" />
+      Timeline
+    </span>
+    <span>
+      {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
+      · {clipCount} clip{clipCount === 1 ? "" : "s"}
+      · {markerCount} marker{markerCount === 1 ? "" : "s"}
+      · top = highest priority
+    </span>
+    <label
+      class="ml-2 inline-flex items-center gap-1"
+      title="Sequence end (program out). Values shorter than media trim clips past that time."
+    >
+      <span>Length</span>
+      <input
+        class="{FIELD} w-16"
+        type="number"
+        min="0"
+        step="0.1"
+        bind:value={durationInput}
+        onchange={applyDurationInput}
+        onkeydown={onDurationKey}
+        aria-label="Timeline length in seconds"
+      />
+      <span>s</span>
+      <span class="min-w-11 text-text tabular-nums">{formatTimestamp(seqDuration)}</span>
+    </label>
+    <div class="ml-auto flex shrink-0 items-center gap-1">
+      <label class="inline-flex items-center gap-1">
+        <ZoomIn size={14} strokeWidth={2} class="opacity-75" aria-hidden="true" />
+        <span>Zoom</span>
         <input
           type="range"
+          class="slider w-28"
+          style="--fill-from: 0%; --fill-to: {((pxPerSecond - MIN_PPS) / (MAX_PPS - MIN_PPS)) * 100}%"
           min={MIN_PPS}
           max={MAX_PPS}
           step="1"
@@ -867,25 +868,20 @@
           oninput={onZoomInput}
           aria-label="Timeline zoom pixels per second"
         />
-        <span class="mono muted">{Math.round(pxPerSecond)} px/s</span>
-        <button
-          type="button"
-          class="ghost zoom-fit"
-          onclick={fitZoomToWidth}
-          title="Fit sequence to timeline width (100%)"
-          aria-label="Fit sequence to timeline width"
-        >
-          <Maximize2 size={14} strokeWidth={2} aria-hidden="true" />
-          <span>Fit</span>
-        </button>
+        <span class="w-14 text-right tabular-nums">{Math.round(pxPerSecond)} px/s</span>
       </label>
       <button
         type="button"
-        class="ghost"
-        onclick={onAddTrack}
-        title="Add video track"
-        aria-label="Add track"
+        class={TEXT_BTN}
+        onclick={fitZoomToWidth}
+        title="Fit sequence to timeline width (100%)"
+        aria-label="Fit sequence to timeline width"
       >
+        <Maximize2 size={14} strokeWidth={2} aria-hidden="true" />
+        <span>Fit</span>
+      </button>
+      <div class={DIVIDER}></div>
+      <button type="button" class={TEXT_BTN} onclick={onAddTrack} title="Add video track" aria-label="Add track">
         <Plus size={16} strokeWidth={2} aria-hidden="true" />
         <span>Track</span>
       </button>
@@ -893,60 +889,51 @@
   </div>
 
   <!-- Discoverable edit tools (keyboard shortcuts still work). -->
-  <div class="timeline-tools" role="toolbar" aria-label="Timeline tools">
-    <div class="tool-group" role="group" aria-label="Navigate">
-      <button
-        type="button"
-        class="ghost tool-btn"
-        onclick={() => seekPrevCut()}
-        title="Previous cut or marker ([)"
-        aria-label="Previous cut or marker"
-      >
+  <div
+    class="flex h-7 shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
+    role="toolbar"
+    aria-label="Timeline tools"
+  >
+    <div class="flex items-center gap-1" role="group" aria-label="Navigate">
+      <button type="button" class={TEXT_BTN} onclick={() => seekPrevCut()} title="Previous cut or marker ([)" aria-label="Previous cut or marker">
         <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
         <span>Prev</span>
       </button>
-      <button
-        type="button"
-        class="ghost tool-btn"
-        onclick={() => seekNextCut()}
-        title="Next cut or marker (])"
-        aria-label="Next cut or marker"
-      >
+      <button type="button" class={TEXT_BTN} onclick={() => seekNextCut()} title="Next cut or marker (])" aria-label="Next cut or marker">
         <span>Next</span>
         <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
-    <div class="tool-sep" aria-hidden="true"></div>
-    <div class="tool-group" role="group" aria-label="Edit">
+    <div class={DIVIDER}></div>
+    <div class="flex items-center gap-1" role="group" aria-label="Edit">
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={splitSelectedAtPlayhead}
         disabled={!app.selectedClipId}
         title="Split selected clip at playhead (S)"
         aria-label="Split clip at playhead"
       >
-        <Scissors size={15} strokeWidth={2} aria-hidden="true" />
+        <Scissors size={16} strokeWidth={2} aria-hidden="true" />
         <span>Split</span>
       </button>
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={() => deleteSelectedClips()}
         disabled={!hasSelection}
         title="Delete selected clip(s) (Delete)"
         aria-label="Delete selected clips"
       >
-        <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+        <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
         <span>Delete</span>
       </button>
     </div>
-    <div class="tool-sep" aria-hidden="true"></div>
-    <div class="tool-group" role="group" aria-label="Display">
+    <div class={DIVIDER}></div>
+    <div class="flex items-center gap-1" role="group" aria-label="Display">
       <button
         type="button"
-        class="ghost tool-btn"
-        class:on={app.showFilmstrips}
+        class={toggleClass(app.showFilmstrips)}
         onclick={onToggleFilmstrips}
         title={app.showFilmstrips
           ? "Hide filmstrips / audio waveforms (ffmpeg)"
@@ -955,56 +942,53 @@
         aria-pressed={app.showFilmstrips}
       >
         {#if app.showFilmstrips}
-          <Image size={15} strokeWidth={2} aria-hidden="true" />
+          <Image size={16} strokeWidth={2} aria-hidden="true" />
         {:else}
-          <ImageOff size={15} strokeWidth={2} aria-hidden="true" />
+          <ImageOff size={16} strokeWidth={2} aria-hidden="true" />
         {/if}
         <span>Thumbs</span>
       </button>
-      <span class="tool-sep-inline" aria-hidden="true"></span>
       {#each ["s", "m", "l"] as size (size)}
         <button
           type="button"
-          class="ghost tool-btn tool-btn-sq"
-          class:on={app.trackRowSize === size}
+          class={toggleSquareClass(app.trackRowSize === size)}
           onclick={() => setTrackRowSize(size as TrackRowSize)}
           title={trackRowMetrics(size as TrackRowSize).title}
           aria-label={trackRowMetrics(size as TrackRowSize).title}
           aria-pressed={app.trackRowSize === size}
         >
-          <span class="io-key">{trackRowMetrics(size as TrackRowSize).label}</span>
+          {trackRowMetrics(size as TrackRowSize).label}
         </button>
       {/each}
     </div>
-    <div class="tool-sep" aria-hidden="true"></div>
-    <div class="tool-group" role="group" aria-label="Play range">
+    <div class={DIVIDER}></div>
+    <div class="flex items-center gap-1" role="group" aria-label="Play range">
+      <!-- warn: the play range is preview-only and never reaches the export. -->
       <button
         type="button"
-        class="ghost tool-btn"
-        class:on={app.playIn != null}
+        class={toggleClass(app.playIn != null, "bg-warn text-ground")}
         onclick={() => setPlayInAtPlayhead()}
         title="Set play-in at playhead (I) — preview only"
         aria-label="Set play in"
         aria-pressed={app.playIn != null}
       >
-        <span class="io-key">I</span>
+        <span class="font-bold">I</span>
         <span>In</span>
       </button>
       <button
         type="button"
-        class="ghost tool-btn"
-        class:on={app.playOut != null}
+        class={toggleClass(app.playOut != null, "bg-warn text-ground")}
         onclick={() => setPlayOutAtPlayhead()}
         title="Set play-out at playhead (O) — preview only"
         aria-label="Set play out"
         aria-pressed={app.playOut != null}
       >
-        <span class="io-key">O</span>
+        <span class="font-bold">O</span>
         <span>Out</span>
       </button>
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={() => clearPlayRange()}
         disabled={!rangeActive}
         title="Clear play range (Esc)"
@@ -1014,27 +998,24 @@
         <span>Clear</span>
       </button>
       {#if rangeActive}
-        <span class="mono tool-hint" title="Preview plays only this range; export is unchanged">
+        <span class="tool-hint tabular-nums" title="Preview plays only this range; export is unchanged">
           {formatTimestamp(bounds.start)}–{formatTimestamp(bounds.end)}
         </span>
       {/if}
     </div>
-    <div class="tool-sep" aria-hidden="true"></div>
-    <div class="tool-group" role="group" aria-label="Markers">
+    <div class={DIVIDER}></div>
+    <div class="flex items-center gap-1" role="group" aria-label="Markers">
       <button
         type="button"
-        class="ghost tool-btn"
+        class={TEXT_BTN}
         onclick={() => addMarkerAtPlayhead()}
         title="Add marker at playhead (M) — click seek, double-click rename, Alt+click remove"
         aria-label="Add marker at playhead"
       >
-        <BookmarkPlus size={15} strokeWidth={2} aria-hidden="true" />
+        <BookmarkPlus size={16} strokeWidth={2} aria-hidden="true" />
         <span>Marker</span>
       </button>
-      <span
-        class="tool-hint muted"
-        title="Markers are seek bookmarks (not exported). ⌥/Alt-drag duplicates clips."
-      >
+      <span class="tool-hint" title="Markers are seek bookmarks (not exported). ⌥/Alt-drag duplicates clips.">
         dbl-click rename · ⌥-drag copy
       </span>
     </div>
@@ -1388,104 +1369,6 @@
 </section>
 
 <style>
-  .timeline {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.45rem 0.55rem 0.55rem;
-    height: 100%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    min-width: 0;
-    box-sizing: border-box;
-  }
-
-  .timeline-head {
-    flex: 0 0 auto;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem 1rem;
-  }
-
-  .head-left,
-  .head-right {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.55rem;
-  }
-
-  .title {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-  }
-
-  .muted {
-    color: var(--muted);
-    font-size: 0.85rem;
-  }
-
-  .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .zoom {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.85rem;
-  }
-
-  .zoom :global(.zoom-icon) {
-    flex-shrink: 0;
-    opacity: 0.75;
-  }
-
-  .zoom input[type="range"] {
-    width: 7rem;
-    accent-color: var(--accent);
-  }
-
-  .zoom-fit {
-    padding: 0.2em 0.45em;
-    font-size: 0.8rem;
-    font-weight: 500;
-  }
-
-  .head-right :global(button) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-
-  .duration-field {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    margin-left: 0.35rem;
-    font-size: 0.85rem;
-  }
-
-  .duration-field input {
-    width: 4.25rem;
-  }
-
-  .duration-label {
-    color: var(--text);
-    min-width: 3.2rem;
-  }
-
   .timeline-body {
     flex: 1 1 auto;
     display: flex;
@@ -1786,77 +1669,6 @@
 
   .marker-rename:focus {
     border-color: var(--accent);
-  }
-
-  .timeline-tools {
-    flex: 0 0 auto;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.35rem 0.5rem;
-    padding: 0.3rem 0.35rem;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-  }
-
-  .tool-group {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.3rem;
-  }
-
-  .tool-sep {
-    width: 1px;
-    height: 1.35rem;
-    background: var(--border);
-    margin: 0 0.15rem;
-  }
-
-  .timeline-tools :global(.tool-btn) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    min-height: 1.85rem;
-    padding: 0.25em 0.55em;
-    font-size: 0.8rem;
-    font-weight: 500;
-  }
-
-  .timeline-tools :global(.tool-btn.on) {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-
-  .timeline-tools :global(.tool-btn-sq) {
-    min-width: 1.85rem;
-    padding-left: 0.4em;
-    padding-right: 0.4em;
-    justify-content: center;
-  }
-
-  .tool-sep-inline {
-    width: 1px;
-    height: 1.2rem;
-    background: var(--border);
-    margin: 0 0.1rem;
-  }
-
-  .io-key {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-
-  .tool-hint {
-    font-size: 0.72rem;
-    max-width: 14rem;
-    line-height: 1.2;
   }
 
   .play-range {
