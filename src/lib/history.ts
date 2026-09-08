@@ -17,12 +17,7 @@ export function historyPush<T>(h: History<T>, next: T, max = 50): History<T> {
  * Finish a live drag/edit: push explicit `before` snapshot (not current present,
  * which may already be the live after-state), set present to `after`, clear future.
  */
-export function historyCommitEdit<T>(
-  h: History<T>,
-  before: T,
-  after: T,
-  max = 50,
-): History<T> {
+export function historyCommitEdit<T>(h: History<T>, before: T, after: T, max = 50): History<T> {
   const past = [...h.past, before];
   while (past.length > max) {
     past.shift();

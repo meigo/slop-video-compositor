@@ -94,12 +94,8 @@ describe("trimProjectToTime", () => {
 
   it("right-trims straddling clips on all tracks", () => {
     const p = createProject();
-    p.tracks[0].clips.push(
-      sampleClip({ id: "v1", timelineStart: 0, sourceIn: 2, sourceOut: 12 }),
-    );
-    p.tracks[1].clips.push(
-      sampleClip({ id: "v2", timelineStart: 4, sourceIn: 0, sourceOut: 10 }),
-    );
+    p.tracks[0].clips.push(sampleClip({ id: "v1", timelineStart: 0, sourceIn: 2, sourceOut: 12 }));
+    p.tracks[1].clips.push(sampleClip({ id: "v2", timelineStart: 4, sourceIn: 0, sourceOut: 10 }));
     const next = trimProjectToTime(p, 6);
     expect(next.tracks[0].clips[0].sourceOut).toBe(8); // 2 + (6 - 0)
     expect(next.tracks[1].clips[0].sourceOut).toBe(2); // 0 + (6 - 4)
@@ -128,9 +124,7 @@ describe("parse/serialize", () => {
   it("serialize writes effective duration when content exceeds stored", () => {
     const p = createProject("R");
     p.duration = 2;
-    p.tracks[0].clips.push(
-      sampleClip({ timelineStart: 0, sourceIn: 0, sourceOut: 20 }),
-    );
+    p.tracks[0].clips.push(sampleClip({ timelineStart: 0, sourceIn: 0, sourceOut: 20 }));
     const raw = JSON.parse(serializeProject(p));
     expect(raw.duration).toBe(20);
     expect(p.duration).toBe(2); // in-memory stored field unchanged by serialize
@@ -197,7 +191,9 @@ describe("parse/serialize", () => {
     expect(again.tracks[0].clips[1].muted).toBe(true);
   });
   it("rejects bad version", () => {
-    expect(() => parseProject({ version: 99, name: "x", canvas: { width: 1, height: 1 }, tracks: [] })).toThrow();
+    expect(() =>
+      parseProject({ version: 99, name: "x", canvas: { width: 1, height: 1 }, tracks: [] }),
+    ).toThrow();
   });
 
   it("normalizes odd canvas dimensions to even ≥ 2", () => {

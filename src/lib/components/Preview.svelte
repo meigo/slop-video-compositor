@@ -188,9 +188,7 @@
     }
     // Require a decodable frame (not metadata-only) so swap paints immediately.
     return (
-      el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-      el.videoWidth > 0 &&
-      el.videoHeight > 0
+      el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && el.videoWidth > 0 && el.videoHeight > 0
     );
   }
 
@@ -409,11 +407,7 @@
   }
 
   /** Wait until the element has a decodable frame (or metadata for audio-only). */
-  function waitForFrame(
-    el: HTMLVideoElement,
-    timeoutMs = 4000,
-    audioOnly = false,
-  ): Promise<void> {
+  function waitForFrame(el: HTMLVideoElement, timeoutMs = 4000, audioOnly = false): Promise<void> {
     return new Promise((resolve) => {
       let done = false;
       const finish = () => {
@@ -486,12 +480,7 @@
     return slot.path === path;
   }
 
-  async function seekSlot(
-    slot: Slot,
-    t: number,
-    clip: Clip,
-    _force = false,
-  ): Promise<void> {
+  async function seekSlot(slot: Slot, t: number, clip: Clip, _force = false): Promise<void> {
     const el = slot.el;
     if (!el) return;
     const target = Math.max(0, t);
@@ -684,11 +673,7 @@
 
     // Only seamless-swap when we actually need the clip's sourceIn (hard cut).
     // Mid-clip play-in / scrub targets must go through seek, not preroll sourceIn.
-    const needSt = clampSourceSeek(
-      nextClip,
-      sourceTimeAt(nextClip, app.playhead),
-      CLIP_END_EPS,
-    );
+    const needSt = clampSourceSeek(nextClip, sourceTimeAt(nextClip, app.playhead), CLIP_END_EPS);
     if (!isHardCutIntoSourceIn(needSt, nextClip.sourceIn, HARD_CUT_TOL)) {
       return false;
     }
@@ -922,8 +907,7 @@
         const clipEndSrc = clampSourceSeek(clip, clip.sourceOut - CLIP_END_EPS, CLIP_END_EPS);
         // Play-out only if the range ends inside this clip (not at every clip boundary).
         const rangeEndsInThisClip = playEnd <= end + 1e-6;
-        const pastPlayOut =
-          rangeEndsInThisClip && vidT >= playOutSrc - CLIP_END_EPS;
+        const pastPlayOut = rangeEndsInThisClip && vidT >= playOutSrc - CLIP_END_EPS;
         const pastClipEnd = vidT >= clipEndSrc - 1e-4 || active.el.ended;
 
         // Before play-in in source space (only when play-in lies inside this clip).
@@ -1293,11 +1277,7 @@
     if (dragMode === "scale") {
       // Right / up grows; exponential so fine near 1× and usable far out
       const delta = clientDx - clientDy;
-      const scale = clamp(
-        dragStartScale * Math.exp(delta * 0.004),
-        CLIP_SCALE_MIN,
-        CLIP_SCALE_MAX,
-      );
+      const scale = clamp(dragStartScale * Math.exp(delta * 0.004), CLIP_SCALE_MIN, CLIP_SCALE_MAX);
       const transform: ClipTransform = {
         ...found.clip.transform,
         scale,
@@ -1376,12 +1356,7 @@
 
     // Smooth trackpad deltas; clamp step for mouse wheels
     const raw = e.deltaY;
-    const factor =
-      Math.abs(raw) > 40
-        ? raw > 0
-          ? 0.9
-          : 1.11
-        : Math.exp(-raw * 0.002);
+    const factor = Math.abs(raw) > 40 ? (raw > 0 ? 0.9 : 1.11) : Math.exp(-raw * 0.002);
 
     const oldZoom = viewZoom;
     const newZoom = clamp(oldZoom * factor, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX);
@@ -1436,7 +1411,12 @@
   <div class="view-hud">
     {#if viewZoom !== 1 || viewPanX !== 0 || viewPanY !== 0}
       <span class="hud-value">{Math.round(viewZoom * 100)}%</span>
-      <button type="button" class="fit-btn" onclick={resetViewport} title="Fit & center (double-click)">
+      <button
+        type="button"
+        class="fit-btn"
+        onclick={resetViewport}
+        title="Fit & center (double-click)"
+      >
         Fit
       </button>
     {:else}

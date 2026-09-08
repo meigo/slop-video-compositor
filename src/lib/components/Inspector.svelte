@@ -96,11 +96,21 @@
           </span>
         {/if}
         <div class="flex flex-wrap gap-1">
-          <button type="button" class={BORDERED_BTN} onclick={onRelink} title="Choose a new file for this clip’s source path">
+          <button
+            type="button"
+            class={BORDERED_BTN}
+            onclick={onRelink}
+            title="Choose a new file for this clip’s source path"
+          >
             <Link2 size={14} strokeWidth={2} aria-hidden="true" />
             <span>Relink…</span>
           </button>
-          <button type="button" class={BORDERED_BTN} onclick={onReveal} title="Reveal source in Finder">
+          <button
+            type="button"
+            class={BORDERED_BTN}
+            onclick={onReveal}
+            title="Reveal source in Finder"
+          >
             <FolderOpen size={14} strokeWidth={2} aria-hidden="true" />
             <span>Reveal</span>
           </button>
@@ -210,7 +220,12 @@
           <span class={UNIT}>px</span>
         </label>
         <div class="col-span-3">
-          <button type="button" class={BORDERED_BTN} onclick={onResetTransform} title="Reset scale and position to default">
+          <button
+            type="button"
+            class={BORDERED_BTN}
+            onclick={onResetTransform}
+            title="Reset scale and position to default"
+          >
             <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
             <span>Reset transform</span>
           </button>

@@ -26,9 +26,7 @@ describe("defaultExportFileName", () => {
   });
 
   it("uses the project file stem when the name is still the default", () => {
-    expect(defaultExportFileName(proj(), "/x/beach-edit.json")).toBe(
-      "beach-edit_10s_0clip.mp4",
-    );
+    expect(defaultExportFileName(proj(), "/x/beach-edit.json")).toBe("beach-edit_10s_0clip.mp4");
   });
 
   it("prefers an explicit project name over the filename", () => {
@@ -48,15 +46,11 @@ describe("defaultExportFileName", () => {
   });
 
   it("handles a Windows-style path", () => {
-    expect(defaultExportFileName(proj(), "C:\\x\\beach.json")).toBe(
-      "beach_10s_0clip.mp4",
-    );
+    expect(defaultExportFileName(proj(), "C:\\x\\beach.json")).toBe("beach_10s_0clip.mp4");
   });
 
   it("sanitizes characters that are illegal in filenames", () => {
-    expect(defaultExportFileName(proj({ name: "a/b:c" }), null)).toBe(
-      "a_b_c_10s_0clip.mp4",
-    );
+    expect(defaultExportFileName(proj({ name: "a/b:c" }), null)).toBe("a_b_c_10s_0clip.mp4");
   });
 
   it("caps a long label at 48 characters", () => {
@@ -67,9 +61,7 @@ describe("defaultExportFileName", () => {
   });
 
   it("uses a decimal tag for sub-second durations", () => {
-    expect(defaultExportFileName(proj({ duration: 0.4 }), null)).toBe(
-      "export_0.4s_0clip.mp4",
-    );
+    expect(defaultExportFileName(proj({ duration: 0.4 }), null)).toBe("export_0.4s_0clip.mp4");
   });
 
   it("counts clips across all tracks", () => {

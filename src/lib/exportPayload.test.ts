@@ -39,9 +39,7 @@ describe("toExportOpts", () => {
     const sum = opts.segments.reduce((acc, s) => acc + s.duration, 0);
     expect(sum).toBeCloseTo(projectDuration(withTail), 10);
 
-    const clipA = opts.segments.find(
-      (s) => s.kind === "clip" && s.source_path === "/a.mp4",
-    );
+    const clipA = opts.segments.find((s) => s.kind === "clip" && s.source_path === "/a.mp4");
     expect(clipA).toMatchObject({
       kind: "clip",
       source_path: "/a.mp4",
@@ -55,9 +53,7 @@ describe("toExportOpts", () => {
       has_audio: true,
     });
 
-    const clipB = opts.segments.find(
-      (s) => s.kind === "clip" && s.source_path === "/b.mp4",
-    );
+    const clipB = opts.segments.find((s) => s.kind === "clip" && s.source_path === "/b.mp4");
     expect(clipB).toMatchObject({
       kind: "clip",
       has_audio: false,

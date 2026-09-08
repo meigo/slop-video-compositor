@@ -61,11 +61,7 @@ export function videoClipAtTime(
 ): ClipHit | null {
   for (let i = project.tracks.length - 1; i >= 0; i--) {
     const track = project.tracks[i]!;
-    const winner = coveringOnTrack(
-      track,
-      t,
-      (c) => !isAudioOnlySource(c.sourcePath, metaByPath),
-    );
+    const winner = coveringOnTrack(track, t, (c) => !isAudioOnlySource(c.sourcePath, metaByPath));
     if (winner) {
       return { trackId: track.id, clip: winner };
     }

@@ -56,12 +56,7 @@
     projectDuration,
     setProjectDuration,
   } from "$lib/project";
-  import {
-    collectSnapTimes,
-    DEFAULT_SNAP_THRESHOLD,
-    snapClipStart,
-    snapTime,
-  } from "$lib/snap";
+  import { collectSnapTimes, DEFAULT_SNAP_THRESHOLD, snapClipStart, snapTime } from "$lib/snap";
   import { clamp, formatTimestamp } from "$lib/time";
   import { trackRowMetrics, type TrackRowSize } from "$lib/trackRow";
   import type { Project } from "$lib/types";
@@ -417,10 +412,9 @@
 
     const target = e.target as HTMLElement;
     const edge =
-      forceEdge ?? (target.closest("[data-edge]") as HTMLElement | null)?.dataset.edge as
-        | "in"
-        | "out"
-        | undefined;
+      forceEdge ??
+      ((target.closest("[data-edge]") as HTMLElement | null)?.dataset.edge as
+        "in" | "out" | undefined);
     const foundClip = p.tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
     if (!foundClip) return;
 
@@ -453,9 +447,7 @@
     dragClipId = clipId;
     // Multi move only for body drag (not trim edges)
     dragGroupIds =
-      dragKind === "move" && app.selectedClipIds.length > 1
-        ? [...app.selectedClipIds]
-        : [clipId];
+      dragKind === "move" && app.selectedClipIds.length > 1 ? [...app.selectedClipIds] : [clipId];
     dragBefore = snapshot;
     dragOriginX = e.clientX;
     dragOriginY = e.clientY;
@@ -598,8 +590,7 @@
         const primary = app.selectedClipId ? findClip(after, app.selectedClipId) : null;
         if (primary) app.selectedTrackId = after.tracks[primary.trackIndex]!.id;
       }
-      app.status =
-        newIds.length > 1 ? `Duplicated ${newIds.length} clips` : "Duplicated clip";
+      app.status = newIds.length > 1 ? `Duplicated ${newIds.length} clips` : "Duplicated clip";
       return;
     }
 
@@ -720,9 +711,7 @@
     }
   }
 
-  const hasSelection = $derived(
-    app.selectedClipIds.length > 0 || app.selectedClipId != null,
-  );
+  const hasSelection = $derived(app.selectedClipIds.length > 0 || app.selectedClipId != null);
   const markerCount = $derived((p.markers ?? []).length);
   const rangeActive = $derived(hasPlayRange());
   const bounds = $derived(playBounds());
@@ -739,10 +728,7 @@
       app.status = `Thumbs: ${err}`;
       return;
     }
-    if (
-      app.status.startsWith("Generating thumbs") ||
-      app.status.startsWith("Thumbs:")
-    ) {
+    if (app.status.startsWith("Generating thumbs") || app.status.startsWith("Thumbs:")) {
       app.status = "Thumbs ready";
     }
   }
@@ -786,28 +772,16 @@
   });
 
   /** Render-only peek — never starts ffmpeg (that would mutate state mid-paint). */
-  function filmstripForClip(
-    clip: (typeof p.tracks)[0]["clips"][0],
-  ): FilmstripReady | null {
+  function filmstripForClip(clip: (typeof p.tracks)[0]["clips"][0]): FilmstripReady | null {
     void filmstripTick;
     if (!app.showFilmstrips) return null;
-    return peekFilmstrip(
-      clip,
-      app.metaByPath.get(clip.sourcePath),
-      FILMSTRIP_H,
-    );
+    return peekFilmstrip(clip, app.metaByPath.get(clip.sourcePath), FILMSTRIP_H);
   }
 
-  function waveformForClip(
-    clip: (typeof p.tracks)[0]["clips"][0],
-  ): WaveformReady | null {
+  function waveformForClip(clip: (typeof p.tracks)[0]["clips"][0]): WaveformReady | null {
     void waveformTick;
     if (!app.showFilmstrips) return null;
-    return peekWaveform(
-      clip,
-      app.metaByPath.get(clip.sourcePath),
-      FILMSTRIP_H,
-    );
+    return peekWaveform(clip, app.metaByPath.get(clip.sourcePath), FILMSTRIP_H);
   }
 
   function onToggleFilmstrips() {
@@ -824,7 +798,9 @@
 </script>
 
 <section class="flex h-full min-h-0 min-w-0 flex-col bg-ground" aria-label="Timeline">
-  <div class="flex h-7 shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted">
+  <div
+    class="flex h-7 shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-panel px-2 text-[11px] whitespace-nowrap text-muted"
+  >
     <span class="{HEADING} inline-flex items-center gap-1">
       <Layers size={14} strokeWidth={2} aria-hidden="true" />
       Timeline
@@ -860,7 +836,8 @@
         <input
           type="range"
           class="slider w-28"
-          style="--fill-from: 0%; --fill-to: {((pxPerSecond - MIN_PPS) / (MAX_PPS - MIN_PPS)) * 100}%"
+          style="--fill-from: 0%; --fill-to: {((pxPerSecond - MIN_PPS) / (MAX_PPS - MIN_PPS)) *
+            100}%"
           min={MIN_PPS}
           max={MAX_PPS}
           step="1"
@@ -881,7 +858,13 @@
         <span>Fit</span>
       </button>
       <div class={DIVIDER} aria-hidden="true"></div>
-      <button type="button" class={TEXT_BTN} onclick={onAddTrack} title="Add video track" aria-label="Add track">
+      <button
+        type="button"
+        class={TEXT_BTN}
+        onclick={onAddTrack}
+        title="Add video track"
+        aria-label="Add track"
+      >
         <Plus size={16} strokeWidth={2} aria-hidden="true" />
         <span>Track</span>
       </button>
@@ -895,11 +878,23 @@
     aria-label="Timeline tools"
   >
     <div class="flex items-center gap-1" role="group" aria-label="Navigate">
-      <button type="button" class={TEXT_BTN} onclick={() => seekPrevCut()} title="Previous cut or marker ([)" aria-label="Previous cut or marker">
+      <button
+        type="button"
+        class={TEXT_BTN}
+        onclick={() => seekPrevCut()}
+        title="Previous cut or marker ([)"
+        aria-label="Previous cut or marker"
+      >
         <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
         <span>Prev</span>
       </button>
-      <button type="button" class={TEXT_BTN} onclick={() => seekNextCut()} title="Next cut or marker (])" aria-label="Next cut or marker">
+      <button
+        type="button"
+        class={TEXT_BTN}
+        onclick={() => seekNextCut()}
+        title="Next cut or marker (])"
+        aria-label="Next cut or marker"
+      >
         <span>Next</span>
         <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
       </button>
@@ -998,7 +993,10 @@
         <span>Clear</span>
       </button>
       {#if rangeActive}
-        <span class="tool-hint tabular-nums" title="Preview plays only this range; export is unchanged">
+        <span
+          class="tool-hint tabular-nums"
+          title="Preview plays only this range; export is unchanged"
+        >
           {formatTimestamp(bounds.start)}–{formatTimestamp(bounds.end)}
         </span>
       {/if}
@@ -1015,7 +1013,10 @@
         <BookmarkPlus size={16} strokeWidth={2} aria-hidden="true" />
         <span>Marker</span>
       </button>
-      <span class="tool-hint" title="Markers are seek bookmarks (not exported). ⌥/Alt-drag duplicates clips.">
+      <span
+        class="tool-hint"
+        title="Markers are seek bookmarks (not exported). ⌥/Alt-drag duplicates clips."
+      >
         dbl-click rename · ⌥-drag copy
       </span>
     </div>
@@ -1052,11 +1053,7 @@
       {/each}
     </div>
 
-    <div
-      class="scroll"
-      bind:this={scrollEl}
-      onwheel={onWheel}
-    >
+    <div class="scroll" bind:this={scrollEl} onwheel={onWheel}>
       <div class="content" style:width="{contentWidth}px">
         <div class="timeline-stack">
           <!-- Ruler (click + drag to scrub) -->
@@ -1083,16 +1080,26 @@
                 class="play-range"
                 style:left="{bounds.start * pxPerSecond}px"
                 style:width="{(bounds.end - bounds.start) * pxPerSecond}px"
-                title="Play range {formatTimestamp(bounds.start)} – {formatTimestamp(bounds.end)} (preview only)"
+                title="Play range {formatTimestamp(bounds.start)} – {formatTimestamp(
+                  bounds.end,
+                )} (preview only)"
                 aria-hidden="true"
               ></div>
               <!-- Asymmetric half-wedges, so they differ from the playhead head in SHAPE: red on
                    amber is the worst pair for the common colour blindnesses. -->
               {#if app.playIn != null}
-                <div class="play-io in" style:left="{bounds.start * pxPerSecond}px" aria-hidden="true"></div>
+                <div
+                  class="play-io in"
+                  style:left="{bounds.start * pxPerSecond}px"
+                  aria-hidden="true"
+                ></div>
               {/if}
               {#if app.playOut != null}
-                <div class="play-io out" style:left="{bounds.end * pxPerSecond - 8}px" aria-hidden="true"></div>
+                <div
+                  class="play-io out"
+                  style:left="{bounds.end * pxPerSecond - 8}px"
+                  aria-hidden="true"
+                ></div>
               {/if}
             {/if}
             {#each p.markers ?? [] as marker (marker.id)}
@@ -1133,7 +1140,9 @@
                   type="button"
                   class="marker"
                   style:left="{marker.t * pxPerSecond}px"
-                  title="{marker.label} @ {formatTimestamp(marker.t)} — click seek, double-click rename, Alt+click remove"
+                  title="{marker.label} @ {formatTimestamp(
+                    marker.t,
+                  )} — click seek, double-click rename, Alt+click remove"
                   aria-label="Marker {marker.label}"
                   onpointerdown={(e) => {
                     // Keep hits on the marker (not ruler scrub / playhead).
@@ -1163,7 +1172,11 @@
           </div>
 
           <!-- Tracks / clips -->
-          <div class="lanes" bind:this={lanesEl} style:min-height="{displayTracks.length * TRACK_H}px">
+          <div
+            class="lanes"
+            bind:this={lanesEl}
+            style:min-height="{displayTracks.length * TRACK_H}px"
+          >
             {#each displayTracks as track (track.id)}
               <div
                 class="lane"
@@ -1180,8 +1193,7 @@
                   {@const usedW = Math.max(dur * pxPerSecond, 4)}
                   {@const mediaDur = app.metaByPath.get(clip.sourcePath)?.duration ?? 0}
                   {@const preSec = clip.sourceIn > 0 ? clip.sourceIn : 0}
-                  {@const postSec =
-                    mediaDur > clip.sourceOut ? mediaDur - clip.sourceOut : 0}
+                  {@const postSec = mediaDur > clip.sourceOut ? mediaDur - clip.sourceOut : 0}
                   {@const preW = preSec * pxPerSecond}
                   {@const postW = postSec * pxPerSecond}
                   {@const colorVars = clipColorCssVars(clip.sourcePath)}
@@ -1193,7 +1205,9 @@
                       class="clip-handle left"
                       class:active={isClipSelected(clip.id)}
                       style="{colorVars}; left: {usedLeft - preW}px; width: {preW}px"
-                      title="Trimmed head ({preSec.toFixed(2)}s) — drag left edge of clip to restore"
+                      title="Trimmed head ({preSec.toFixed(
+                        2,
+                      )}s) — drag left edge of clip to restore"
                       aria-hidden="true"
                     ></div>
                   {/if}
@@ -1202,7 +1216,9 @@
                       class="clip-handle right"
                       class:active={isClipSelected(clip.id)}
                       style="{colorVars}; left: {usedLeft + usedW}px; width: {postW}px"
-                      title="Trimmed tail ({postSec.toFixed(2)}s) — drag right edge of clip to restore"
+                      title="Trimmed tail ({postSec.toFixed(
+                        2,
+                      )}s) — drag right edge of clip to restore"
                       aria-hidden="true"
                     ></div>
                   {/if}
@@ -1339,7 +1355,9 @@
             aria-valuemax={Math.max(contentEnd + 3600, displayDuration)}
             aria-valuenow={displayDuration}
             aria-valuetext="{formatTimestamp(displayDuration)} ({displayDuration.toFixed(2)}s)"
-            title="Sequence end {formatTimestamp(displayDuration)} — drag right for black tail, left to trim clips past this time"
+            title="Sequence end {formatTimestamp(
+              displayDuration,
+            )} — drag right for black tail, left to trim clips past this time"
             onpointerdown={startDurationResize}
             onkeydown={(e) => {
               if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -1468,12 +1486,7 @@
   }
 
   .clip-handle.active {
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.18
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.18);
     border-color: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.55);
   }
 
@@ -1699,14 +1712,8 @@
     z-index: 1;
     display: flex;
     align-items: center;
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.28
-    );
-    border: 1px solid
-      hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.55);
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.28);
+    border: 1px solid hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.55);
     border-left: 3px solid
       hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.95);
     border-radius: 4px;
@@ -1719,12 +1726,7 @@
   }
 
   .clip.has-filmstrip {
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.18
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.18);
   }
 
   .clip.has-filmstrip::after {
@@ -1741,21 +1743,11 @@
   }
 
   .clip:hover {
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.4
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.4);
   }
 
   .clip.has-filmstrip:hover {
-    background: hsla(
-      var(--clip-h),
-      calc(var(--clip-s) * 1%),
-      calc(var(--clip-l) * 1%),
-      0.22
-    );
+    background: hsla(var(--clip-h), calc(var(--clip-s) * 1%), calc(var(--clip-l) * 1%), 0.22);
   }
 
   /* Selection is the accent OUTLINE; the fill stays calm so hue keeps meaning "which file". */

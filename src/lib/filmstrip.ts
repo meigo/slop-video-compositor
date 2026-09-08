@@ -27,10 +27,7 @@ export function filmstripDensityCount(durationSec: number): number {
 }
 
 /** Clamp source aspect to a sane range; default 16:9. */
-export function filmstripSourceAspect(
-  sourceWidth?: number,
-  sourceHeight?: number,
-): number {
+export function filmstripSourceAspect(sourceWidth?: number, sourceHeight?: number): number {
   if (
     sourceWidth != null &&
     sourceHeight != null &&
@@ -61,9 +58,7 @@ export function filmstripTileWidthPx(
 ): number {
   const h = evenDim(Math.max(8, Math.min(128, Math.round(height))));
   const ar =
-    aspect > 0.2 && aspect < 5 && Number.isFinite(aspect)
-      ? aspect
-      : FILMSTRIP_DEFAULT_ASPECT;
+    aspect > 0.2 && aspect < 5 && Number.isFinite(aspect) ? aspect : FILMSTRIP_DEFAULT_ASPECT;
   return evenDim(Math.max(8, Math.round(h * ar)));
 }
 
@@ -111,13 +106,9 @@ export function filmstripIndicesForTrim(
   mediaDuration: number,
 ): number[] {
   const n = Math.max(1, Math.round(totalTiles));
-  const media =
-    Number.isFinite(mediaDuration) && mediaDuration > 1e-6 ? mediaDuration : 1;
+  const media = Number.isFinite(mediaDuration) && mediaDuration > 1e-6 ? mediaDuration : 1;
   const inT = Math.max(0, Math.min(media, Number.isFinite(sourceIn) ? sourceIn : 0));
-  const outT = Math.max(
-    inT,
-    Math.min(media, Number.isFinite(sourceOut) ? sourceOut : media),
-  );
+  const outT = Math.max(inT, Math.min(media, Number.isFinite(sourceOut) ? sourceOut : media));
   const v = Math.max(1, Math.min(Math.round(visible), n));
 
   const timeToIndex = (t: number): number => {
@@ -147,10 +138,7 @@ export function filmstripTileAspect(
 }
 
 /** On-screen tile width that keeps the tile’s aspect at the clip bar height. */
-export function filmstripDisplayTileWidth(
-  clipHeightPx: number,
-  tileAspect: number,
-): number {
+export function filmstripDisplayTileWidth(clipHeightPx: number, tileAspect: number): number {
   if (!(clipHeightPx > 0) || !(tileAspect > 0)) return 1;
   return clipHeightPx * tileAspect;
 }
@@ -178,7 +166,5 @@ export function filmstripSampleIndices(visible: number, total: number): number[]
   const v = Math.max(1, Math.min(Math.round(visible), t));
   if (v === 1) return [0];
   if (v >= t) return Array.from({ length: t }, (_, i) => i);
-  return Array.from({ length: v }, (_, i) =>
-    Math.round((i * (t - 1)) / (v - 1)),
-  );
+  return Array.from({ length: v }, (_, i) => Math.round((i * (t - 1)) / (v - 1)));
 }

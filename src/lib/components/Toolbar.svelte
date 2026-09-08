@@ -182,11 +182,23 @@
       </button>
       {#if openMenu === "file"}
         <div class="{MENU_PANEL} left-0" role="menu">
-          <button type="button" class={MENU_ITEM} role="menuitem" title="New project" onclick={() => runAndClose(onNew)}>
+          <button
+            type="button"
+            class={MENU_ITEM}
+            role="menuitem"
+            title="New project"
+            onclick={() => runAndClose(onNew)}
+          >
             <FilePlus size={ICON} strokeWidth={2} aria-hidden="true" />
             <span>New</span>
           </button>
-          <button type="button" class={MENU_ITEM} role="menuitem" title="Open project (⌘O)" onclick={() => runAndClose(onOpen)}>
+          <button
+            type="button"
+            class={MENU_ITEM}
+            role="menuitem"
+            title="Open project (⌘O)"
+            onclick={() => runAndClose(onOpen)}
+          >
             <FolderOpen size={ICON} strokeWidth={2} aria-hidden="true" />
             <span>Open…</span>
             <span class="ml-auto pl-4 text-muted">⌘O</span>
@@ -203,7 +215,13 @@
             <span>Save{dirty ? " *" : ""}</span>
             <span class="ml-auto pl-4 text-muted">⌘S</span>
           </button>
-          <button type="button" class={MENU_ITEM} role="menuitem" title="Save project as… (⌘⇧S)" onclick={() => runAndClose(onSaveAs)}>
+          <button
+            type="button"
+            class={MENU_ITEM}
+            role="menuitem"
+            title="Save project as… (⌘⇧S)"
+            onclick={() => runAndClose(onSaveAs)}
+          >
             <SaveAll size={ICON} strokeWidth={2} aria-hidden="true" />
             <span>Save As…</span>
           </button>
@@ -287,7 +305,13 @@
             Each → new track
           </button>
           <div class="my-1 border-t border-line"></div>
-          <button type="button" class={MENU_ITEM} role="menuitem" title="Import video files (⌘I)" onclick={() => runAndClose(onImport)}>
+          <button
+            type="button"
+            class={MENU_ITEM}
+            role="menuitem"
+            title="Import video files (⌘I)"
+            onclick={() => runAndClose(onImport)}
+          >
             <Film size={ICON} strokeWidth={2} aria-hidden="true" />
             <span>Import now…</span>
           </button>
@@ -300,10 +324,24 @@
 
   <!-- edit -->
   <div class="flex items-center gap-1">
-    <button type="button" class={BTN} onclick={onUndo} disabled={!canUndo} title="Undo (⌘Z)" aria-label="Undo">
+    <button
+      type="button"
+      class={BTN}
+      onclick={onUndo}
+      disabled={!canUndo}
+      title="Undo (⌘Z)"
+      aria-label="Undo"
+    >
       <Undo2 size={ICON} strokeWidth={2} aria-hidden="true" />
     </button>
-    <button type="button" class={BTN} onclick={onRedo} disabled={!canRedo} title="Redo (⌘⇧Z)" aria-label="Redo">
+    <button
+      type="button"
+      class={BTN}
+      onclick={onRedo}
+      disabled={!canRedo}
+      title="Redo (⌘⇧Z)"
+      aria-label="Redo"
+    >
       <Redo2 size={ICON} strokeWidth={2} aria-hidden="true" />
     </button>
   </div>
@@ -324,7 +362,11 @@
         {canvasWidth}×{canvasHeight}<span class="text-[9px] opacity-70" aria-hidden="true">▾</span>
       </button>
       {#if openMenu === "canvas"}
-        <div class="{MENU_PANEL} right-0 flex flex-col gap-2 px-3 pb-2" role="dialog" aria-label="Canvas size">
+        <div
+          class="{MENU_PANEL} right-0 flex flex-col gap-2 px-3 pb-2"
+          role="dialog"
+          aria-label="Canvas size"
+        >
           <div class={HEADING}>Canvas</div>
           <div class="flex items-center gap-1 text-[11px] text-muted">
             <label class="flex items-center gap-1">

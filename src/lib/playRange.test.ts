@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  effectivePlayBounds,
-  hasExplicitPlayRange,
-  normalizePlayRange,
-} from "./playRange";
+import { effectivePlayBounds, hasExplicitPlayRange, normalizePlayRange } from "./playRange";
 
 describe("normalizePlayRange", () => {
   it("orders and clamps into the sequence", () => {

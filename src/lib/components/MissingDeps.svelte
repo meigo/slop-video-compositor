@@ -41,7 +41,12 @@
       <span>ffmpeg</span>
     </span>
   </div>
-  <button type="button" class={BORDERED_BTN} onclick={onRecheck} title="Check PATH for ffmpeg again">
+  <button
+    type="button"
+    class={BORDERED_BTN}
+    onclick={onRecheck}
+    title="Check PATH for ffmpeg again"
+  >
     <RefreshCw size={14} strokeWidth={2} aria-hidden="true" />
     <span>Recheck</span>
   </button>

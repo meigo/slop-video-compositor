@@ -52,15 +52,12 @@ export const toggleSquareClass = (on: boolean): string =>
 /** Icon button whose glyph is recoloured to show state (the dirty Save). One string: adding
  *  `text-accent` after BTN's `text-text` would leave the winner to Tailwind's emit order. */
 export const markedBtnClass = (marked: boolean): string =>
-  marked
-    ? `${CONTROL_H} w-6 text-accent hover:bg-raised`
-    : BTN;
+  marked ? `${CONTROL_H} w-6 text-accent hover:bg-raised` : BTN;
 
 /** Inspector / bar input. `raised`, never `panel`: a panel-coloured field is invisible on a
  *  panel. Width is the CALLER's — `FIELD` must not set one, or a caller appending `w-16`
  *  puts two width utilities in one string. */
-export const FIELD =
-  "h-6 min-w-0 rounded bg-raised px-1 text-right text-xs text-text tabular-nums";
+export const FIELD = "h-6 min-w-0 rounded bg-raised px-1 text-right text-xs text-text tabular-nums";
 
 /** Bordered action button for panels (Relink, Reveal, Reset, Recheck). */
 export const BORDERED_BTN =

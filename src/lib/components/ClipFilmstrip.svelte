@@ -26,20 +26,10 @@
     mediaDuration: number;
   }
 
-  let {
-    url,
-    count,
-    width,
-    height,
-    sourceIn,
-    sourceOut,
-    mediaDuration,
-  }: Props = $props();
+  let { url, count, width, height, sourceIn, sourceOut, mediaDuration }: Props = $props();
 
   const n = $derived(Math.max(1, Math.round(count)));
-  const sheetAr = $derived(
-    Math.max(1, Math.round(width)) / Math.max(1, Math.round(height)),
-  );
+  const sheetAr = $derived(Math.max(1, Math.round(width)) / Math.max(1, Math.round(height)));
   const tileAr = $derived(filmstripTileAspect(width, height, n));
 
   let stripEl: HTMLDivElement | undefined = $state();
@@ -63,9 +53,7 @@
 
   const tileW = $derived(filmstripDisplayTileWidth(clipH, tileAr));
   const visible = $derived(filmstripVisibleCount(clipW, tileW, n));
-  const indices = $derived(
-    filmstripIndicesForTrim(visible, n, sourceIn, sourceOut, mediaDuration),
-  );
+  const indices = $derived(filmstripIndicesForTrim(visible, n, sourceIn, sourceOut, mediaDuration));
 </script>
 
 <div class="strip" bind:this={stripEl} aria-hidden="true">

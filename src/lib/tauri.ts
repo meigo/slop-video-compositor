@@ -15,8 +15,7 @@ export type { AppSettings, DepsStatus, ExportResult, MediaMeta };
 
 export const checkDeps = () => invoke<DepsStatus>("check_deps");
 
-export const probeMedia = (path: string) =>
-  invoke<MediaMeta>("probe_media", { path });
+export const probeMedia = (path: string) => invoke<MediaMeta>("probe_media", { path });
 
 /** Wire shape from Rust `generate_filmstrip`. */
 export type FilmstripResult = {
@@ -77,21 +76,17 @@ export function isAudioOnlyMeta(
   return !!meta && (meta.width === 0 || meta.height === 0);
 }
 
-export const exportProject = (opts: ExportOpts) =>
-  invoke<ExportResult>("export_project", { opts });
+export const exportProject = (opts: ExportOpts) => invoke<ExportResult>("export_project", { opts });
 
 export const loadSettings = () => invoke<AppSettings>("load_settings");
 
-export const saveSettings = (settings: AppSettings) =>
-  invoke<void>("save_settings", { settings });
+export const saveSettings = (settings: AppSettings) => invoke<void>("save_settings", { settings });
 
 export const defaultExportDir = () => invoke<string>("default_export_dir");
 
-export const revealInFolder = (path: string) =>
-  invoke<void>("reveal_in_folder", { path });
+export const revealInFolder = (path: string) => invoke<void>("reveal_in_folder", { path });
 
-export const readTextFile = (path: string) =>
-  invoke<string>("read_text_file", { path });
+export const readTextFile = (path: string) => invoke<string>("read_text_file", { path });
 
 export const writeTextFile = (path: string, contents: string) =>
   invoke<void>("write_text_file", { path, contents });
@@ -164,9 +159,7 @@ const MEDIA_FILTERS = [
 ];
 
 /** Multi-select video/audio files for import. Returns [] if cancelled. */
-export async function pickVideoFiles(
-  defaultPath?: string | null,
-): Promise<string[]> {
+export async function pickVideoFiles(defaultPath?: string | null): Promise<string[]> {
   const selected = await open({
     multiple: true,
     directory: false,
@@ -179,9 +172,7 @@ export async function pickVideoFiles(
 }
 
 /** Single video/audio file for relink. Returns null if cancelled. */
-export async function pickVideoFile(
-  defaultPath?: string | null,
-): Promise<string | null> {
+export async function pickVideoFile(defaultPath?: string | null): Promise<string | null> {
   const selected = await open({
     multiple: false,
     directory: false,
@@ -194,9 +185,7 @@ export async function pickVideoFile(
 }
 
 /** Save dialog for export MP4 path. Returns null if cancelled. */
-export async function pickExportPath(
-  defaultPath?: string | null,
-): Promise<string | null> {
+export async function pickExportPath(defaultPath?: string | null): Promise<string | null> {
   return save({
     filters: [{ name: "MP4 video", extensions: ["mp4"] }],
     defaultPath: defaultPath ?? undefined,

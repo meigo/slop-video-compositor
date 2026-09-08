@@ -3,7 +3,9 @@ import { createProject, defaultTransform } from "./project";
 import { audioBedAtTime, clipAtTime, videoClipAtTime } from "./resolve";
 import type { Clip, SourceMeta } from "./types";
 
-function clip(p: Partial<Clip> & Pick<Clip, "id" | "timelineStart" | "sourceIn" | "sourceOut">): Clip {
+function clip(
+  p: Partial<Clip> & Pick<Clip, "id" | "timelineStart" | "sourceIn" | "sourceOut">,
+): Clip {
   return {
     sourcePath: "/a.mp4",
     transform: defaultTransform(),

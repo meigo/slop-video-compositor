@@ -15,9 +15,7 @@
 
   let { url, sourceIn, sourceOut, mediaDuration }: Props = $props();
 
-  const layout = $derived(
-    waveformTrimLayout(sourceIn, sourceOut, mediaDuration),
-  );
+  const layout = $derived(waveformTrimLayout(sourceIn, sourceOut, mediaDuration));
 </script>
 
 <div class="wave" aria-hidden="true">
@@ -48,8 +46,7 @@
      * Base generation color is ~hue 210 (#9ec5ff). Rotate toward the clip
      * palette hue and screen-blend onto the dark clip fill.
      */
-    filter: hue-rotate(calc((var(--clip-h, 210) - 210) * 1deg))
-      saturate(1.25) brightness(1.08);
+    filter: hue-rotate(calc((var(--clip-h, 210) - 210) * 1deg)) saturate(1.25) brightness(1.08);
     mix-blend-mode: screen;
   }
 </style>

@@ -271,7 +271,7 @@
 </script>
 
 <div
-  class="legacy flex h-screen flex-col overflow-hidden bg-ground text-text {resizingTimeline
+  class="flex h-screen flex-col overflow-hidden bg-ground text-text {resizingTimeline
     ? 'cursor-row-resize select-none'
     : ''}"
 >

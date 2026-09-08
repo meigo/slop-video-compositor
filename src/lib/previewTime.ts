@@ -26,11 +26,7 @@ export function clampSourceSeek(clip: Clip, sourceT: number, endEps = 1 / 30): n
  * Standby preroll seek: a little before `sourceIn` so playback can roll into the cut
  * past keyframe stalls. Clamped to ≥ 0 and still below sourceOut.
  */
-export function clampSourceSeekPreroll(
-  clip: Clip,
-  prerollSecs: number,
-  endEps = 1 / 30,
-): number {
+export function clampSourceSeekPreroll(clip: Clip, prerollSecs: number, endEps = 1 / 30): number {
   const preroll = Number.isFinite(prerollSecs) ? Math.max(0, prerollSecs) : 0;
   const target = Math.max(0, clip.sourceIn - preroll);
   const maxT = Math.max(target, clip.sourceOut - endEps);
@@ -67,11 +63,7 @@ export function shouldPrerollStandby(
  * Hard-cut swap is only seamless when the playhead maps near the next clip's
  * sourceIn (not a mid-clip scrub/play-in target).
  */
-export function isHardCutIntoSourceIn(
-  needSourceT: number,
-  sourceIn: number,
-  tol = 0.08,
-): boolean {
+export function isHardCutIntoSourceIn(needSourceT: number, sourceIn: number, tol = 0.08): boolean {
   if (!Number.isFinite(needSourceT) || !Number.isFinite(sourceIn)) return false;
   return Math.abs(needSourceT - sourceIn) <= tol;
 }

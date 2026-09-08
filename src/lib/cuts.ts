@@ -14,9 +14,7 @@ export function cutPoints(project: Project): number[] {
   for (const m of project.markers ?? []) {
     if (Number.isFinite(m.t) && m.t >= 0 && m.t <= T) times.add(m.t);
   }
-  return [...times]
-    .filter((t) => t >= 0 && t <= T)
-    .sort((a, b) => a - b);
+  return [...times].filter((t) => t >= 0 && t <= T).sort((a, b) => a - b);
 }
 
 /** Previous cut strictly before `t`, or 0. */
