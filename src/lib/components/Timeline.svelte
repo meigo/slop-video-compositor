@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import ArrowLeftToLine from "@lucide/svelte/icons/arrow-left-to-line";
+  import ArrowRightToLine from "@lucide/svelte/icons/arrow-right-to-line";
   import BookmarkPlus from "@lucide/svelte/icons/bookmark-plus";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
@@ -28,7 +30,7 @@
     trimClipOut,
   } from "$lib/clips";
   import { clipColorCssVars } from "$lib/clipColor";
-  import { BTN, DIVIDER, FIELD, toggleClass, toggleSquareClass } from "$lib/ui";
+  import { BTN, DIVIDER, FIELD, toggleClass, toggleIconClass } from "$lib/ui";
   import ClipFilmstrip from "$lib/components/ClipFilmstrip.svelte";
   import ClipWaveform from "$lib/components/ClipWaveform.svelte";
   import {
@@ -999,27 +1001,28 @@
     </div>
     <div class={DIVIDER} aria-hidden="true"></div>
     <div class="flex items-center gap-1" role="group" aria-label="Play range">
-      <!-- warn: the play range is preview-only and never reaches the export. The letter IS the
-           keyboard shortcut, so it stays visible where other tools went icon-only. -->
+      <!-- warn: the play range is preview-only and never reaches the export. The same icons
+           slop-audio-editor uses for its in and out points; unlike that app these stay filled
+           while a bound is set, so you can see a range exists without reading the ruler. -->
       <button
         type="button"
-        class={toggleSquareClass(app.playIn != null, "bg-warn text-ground")}
+        class={toggleIconClass(app.playIn != null, "bg-warn text-ground")}
         onclick={() => setPlayInAtPlayhead()}
         title="Set play-in at playhead (I) — preview only, never affects the export"
         aria-label="Set play in"
         aria-pressed={app.playIn != null}
       >
-        I
+        <ArrowLeftToLine size={16} strokeWidth={2} aria-hidden="true" />
       </button>
       <button
         type="button"
-        class={toggleSquareClass(app.playOut != null, "bg-warn text-ground")}
+        class={toggleIconClass(app.playOut != null, "bg-warn text-ground")}
         onclick={() => setPlayOutAtPlayhead()}
         title="Set play-out at playhead (O) — preview only, never affects the export"
         aria-label="Set play out"
         aria-pressed={app.playOut != null}
       >
-        O
+        <ArrowRightToLine size={16} strokeWidth={2} aria-hidden="true" />
       </button>
       <button
         type="button"
