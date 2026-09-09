@@ -28,8 +28,8 @@ const MIN_DELTA_E = 10;
  */
 const MIN_HUE_DEGREES = 28;
 
-/** --color-warn #F7D266 as HSL: the play range, the in/out wedges and their toggles. */
-const WARN: ClipColor = { h: 45, s: 90, l: 68 };
+/** --color-warn #d5b75d as HSL: the play range, the in/out wedges and their toggles. */
+const WARN: ClipColor = { h: 45, s: 59, l: 60 };
 
 function hueGap(a: number, b: number): number {
   const d = Math.abs(a - b) % 360;
