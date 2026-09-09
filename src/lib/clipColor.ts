@@ -19,21 +19,25 @@ export type ClipColor = {
  * axis for exactly that reason — hue alone does not survive the alpha.
  *
  * Saturation is capped at 65 to sit with the rest of the chrome. Every pair is at least
- * ΔE 11.4 apart composited, and every slot at least ΔE 11.2 from the warn amber, so a
- * clip is never mistaken for the play range or in/out. `clipColorSeparation.test.ts`
- * enforces both floors; re-run its measurements before touching these numbers.
+ * ΔE 10.2 apart composited AND at least 28 degrees apart in hue — ΔE alone is not enough,
+ * because two greens differing only in lightness measured ΔE 11.2 and still read as one
+ * colour. Every slot clears both against the warn amber too, so a clip is never mistaken
+ * for the play range or in/out.
+ *
+ * Nine slots, not ten: the warn amber sits at h45, and once it and the hue rule are both
+ * honoured a tenth slot cannot clear the floor. `clipColorSeparation.test.ts` enforces
+ * all of this; re-run its measurements before touching these numbers.
  */
 export const PALETTE: ClipColor[] = [
-  { h: 15, s: 65, l: 52 }, // brick
-  { h: 40, s: 55, l: 72 }, // sand
-  { h: 70, s: 65, l: 42 }, // moss
-  { h: 120, s: 65, l: 52 }, // green
-  { h: 160, s: 65, l: 42 }, // pine
-  { h: 200, s: 65, l: 52 }, // blue
-  { h: 240, s: 65, l: 52 }, // indigo
+  { h: 15, s: 65, l: 54 }, // red
+  { h: 85, s: 65, l: 54 }, // olive
+  { h: 145, s: 65, l: 44 }, // green
+  { h: 175, s: 58, l: 72 }, // pale cyan
+  { h: 205, s: 65, l: 44 }, // blue
+  { h: 235, s: 65, l: 44 }, // indigo
   { h: 270, s: 65, l: 72 }, // lilac
-  { h: 300, s: 65, l: 52 }, // magenta
-  { h: 340, s: 65, l: 52 }, // rose
+  { h: 300, s: 65, l: 54 }, // magenta
+  { h: 335, s: 58, l: 44 }, // rose
 ];
 
 /** djb2 — stable across sessions for the same string. */

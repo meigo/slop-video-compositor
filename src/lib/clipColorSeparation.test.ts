@@ -21,6 +21,21 @@ const FILL_ALPHA = 0.18;
  */
 const MIN_DELTA_E = 10;
 
+/**
+ * ΔE alone is not enough. Two greens separated only by lightness measured ΔE 11.2 — over the
+ * floor — and still read as one colour with a shadow on it, because ΔE under-weights hue
+ * similarity. Every slot must therefore also be a genuinely different hue.
+ */
+const MIN_HUE_DEGREES = 28;
+
+/** --color-warn #F7D266 as HSL: the play range, the in/out wedges and their toggles. */
+const WARN: ClipColor = { h: 45, s: 90, l: 68 };
+
+function hueGap(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
+
 function hslToRgb({ h, s, l }: ClipColor): [number, number, number] {
   const sn = s / 100;
   const ln = l / 100;
@@ -71,11 +86,24 @@ describe("palette separation", () => {
     expect(tooClose).toEqual([]);
   });
 
+  it("keeps every pair of slots a different hue, not merely a different shade", () => {
+    const tooSimilar: string[] = [];
+    for (let i = 0; i < PALETTE.length; i++) {
+      for (let j = i + 1; j < PALETTE.length; j++) {
+        const gap = hueGap(PALETTE[i]!.h, PALETTE[j]!.h);
+        if (gap < MIN_HUE_DEGREES) {
+          tooSimilar.push(`h${PALETTE[i]!.h} / h${PALETTE[j]!.h}: ${gap}° apart`);
+        }
+      }
+    }
+    expect(tooSimilar).toEqual([]);
+  });
+
   it("does not collide with the warn amber used for the play range and in/out", () => {
-    // --color-warn #f59e0b as HSL, so a clip is never mistaken for session state.
-    const warn: ClipColor = { h: 38, s: 92, l: 50 };
+    // A clip must never be mistaken for session state, which is never saved or exported.
     for (const slot of PALETTE) {
-      expect(deltaE(slot, warn)).toBeGreaterThanOrEqual(MIN_DELTA_E);
+      expect(deltaE(slot, WARN)).toBeGreaterThanOrEqual(MIN_DELTA_E);
+      expect(hueGap(slot.h, WARN.h)).toBeGreaterThanOrEqual(MIN_HUE_DEGREES);
     }
   });
 });
