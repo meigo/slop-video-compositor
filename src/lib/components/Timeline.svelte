@@ -514,6 +514,7 @@
 
     const edge = dragIoEdge;
     const moved = ioDidMove;
+    const startT = ioStartT;
 
     window.removeEventListener("pointermove", onIoPointerMove);
     window.removeEventListener("pointerup", onIoPointerUp);
@@ -522,7 +523,13 @@
     ioDidMove = false;
     ioPointerId = null;
 
-    if (!moved) return;
+    // Click, not drag: seek to the edge, matching what clicking a marker does. Without this
+    // the press is swallowed by stopPropagation and the ruler never gets to scrub.
+    if (!moved) {
+      setPlayhead(startT);
+      app.status = `Play-${edge} ${formatTimestamp(startT)}`;
+      return;
+    }
     const at = edge === "in" ? app.playIn : app.playOut;
     app.status = `Play-${edge} ${at == null ? "cleared" : formatTimestamp(at)}`;
   }
@@ -1238,7 +1245,7 @@
                   class:dragging={dragIoEdge === "in" && ioDidMove}
                   style:left="{bounds.start * pxPerSecond - 6}px"
                   title="Play-in {formatTimestamp(bounds.start)} — drag to move (preview only)"
-                  data-hint="Drag to move the play-in (Shift for free)"
+                  data-hint="Drag to move the play-in (Shift for free) · click to seek"
                   aria-label="Play-in at {formatTimestamp(bounds.start)}"
                   onpointerdown={(e) => onIoPointerDown(e, "in")}
                 >
@@ -1252,7 +1259,7 @@
                   class:dragging={dragIoEdge === "out" && ioDidMove}
                   style:left="{bounds.end * pxPerSecond - 14}px"
                   title="Play-out {formatTimestamp(bounds.end)} — drag to move (preview only)"
-                  data-hint="Drag to move the play-out (Shift for free)"
+                  data-hint="Drag to move the play-out (Shift for free) · click to seek"
                   aria-label="Play-out at {formatTimestamp(bounds.end)}"
                   onpointerdown={(e) => onIoPointerDown(e, "out")}
                 >
@@ -1868,8 +1875,8 @@
   .io-grab {
     position: absolute;
     top: 0;
+    bottom: 0;
     width: 20px;
-    height: 14px;
     padding: 0;
     border: 0;
     background: transparent;
